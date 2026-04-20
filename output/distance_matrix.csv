@@ -1,4 +1,4 @@
-bank_id,hospital_id,distance_km,estimated_time
+bank_id,hospital_id,distance_km,estimated_time_min
 B1,H1,0.71,1.42
 B1,H2,2.21,4.41
 B1,H3,4.49,8.97
