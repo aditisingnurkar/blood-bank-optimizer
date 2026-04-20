@@ -60,7 +60,15 @@ banks = pd.read_csv("data/blood_banks.csv")
 hospitals = pd.read_csv("data/hospitals.csv")
 
 inventory = load_inventory()   # Person 1
-requests = load_requests()     # Person 2   <-- FIXED (important)
+requests = load_requests()     # Person 2
+
+
+# ==============================
+# Person 4: Shared IDs
+# ==============================
+
+bank_ids = banks["bank_id"].unique().tolist()
+hospital_ids = hospitals["hospital_id"].unique().tolist()
 
 
 # ==============================
@@ -86,7 +94,7 @@ result = []
 for _, b in banks.iterrows():
     for _, h in hospitals.iterrows():
         distance = calculate_distance(b["lat"], b["lon"], h["lat"], h["lon"])
-        time = distance * 2  # simple assumption
+        time = distance * 2
 
         result.append({
             "bank_id": b["bank_id"],
@@ -99,7 +107,7 @@ df = pd.DataFrame(result)
 
 
 # ==============================
-# Validation
+# Validation (Distance Matrix)
 # ==============================
 
 assert df.isnull().sum().sum() == 0, "Missing values found"
@@ -109,10 +117,55 @@ assert df.duplicated().sum() == 0, "Duplicate rows found"
 
 
 # ==============================
-# Save Output
+# Person 4: File Handling Functions
+# ==============================
+
+def read_csv_file(path):
+    return pd.read_csv(path)
+
+def write_csv_file(dataframe, path):
+    dataframe.to_csv(path, index=False)
+
+def append_csv_file(dataframe, path):
+    dataframe.to_csv(path, mode='a', header=False, index=False)
+
+
+# ==============================
+# Person 4: Cross-file Validation
+# ==============================
+
+def validate_ids():
+    inventory_bank_ids = set(inventory["bank_id"])
+    request_hospital_ids = set(requests["hospital_id"])
+
+    assert inventory_bank_ids.issubset(set(bank_ids)), "Inventory bank IDs mismatch"
+    assert request_hospital_ids.issubset(set(hospital_ids)), "Request hospital IDs mismatch"
+
+    print("All IDs are consistent across files.")
+
+
+validate_ids()
+
+
+# ==============================
+# Person 4: Create Log File
+# ==============================
+
+log_path = "output/distribution_log.csv"
+
+if not os.path.exists(log_path):
+    log_df = pd.DataFrame(columns=[
+        "bank_id", "hospital_id", "blood_type",
+        "units_sent", "request_id", "status"
+    ])
+    write_csv_file(log_df, log_path)
+
+
+# ==============================
+# Save Distance Matrix
 # ==============================
 
 os.makedirs("output", exist_ok=True)
-df.to_csv("output/distance_matrix.csv", index=False)
+write_csv_file(df, "output/distance_matrix.csv")
 
 print("Distance matrix generated successfully.")
