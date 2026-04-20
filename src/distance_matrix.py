@@ -20,6 +20,34 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 # Load data
 banks = pd.read_csv("data/blood_banks.csv")
 hospitals = pd.read_csv("data/hospitals.csv")
+# Load data
+banks = pd.read_csv("data/blood_banks.csv")
+hospitals = pd.read_csv("data/hospitals.csv")
+
+# ==============================
+# Person 2: Data Preprocessing
+# ==============================
+
+# Remove duplicates
+banks = banks.drop_duplicates()
+hospitals = hospitals.drop_duplicates()
+
+# Remove missing values
+banks = banks.dropna()
+hospitals = hospitals.dropna()
+
+# Convert lat/lon to float
+banks["lat"] = banks["lat"].astype(float)
+banks["lon"] = banks["lon"].astype(float)
+
+hospitals["lat"] = hospitals["lat"].astype(float)
+hospitals["lon"] = hospitals["lon"].astype(float)
+
+# ==============================
+# Person 3: Distance Logic
+# ==============================
+
+result = []
 
 result = []
 

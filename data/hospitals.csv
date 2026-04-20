@@ -1,5 +1,5 @@
-hospital_id,lat,lon
-H1,18.5200,73.8500
-H2,18.5400,73.8600
-H3,18.5000,73.8200
-H4,18.5300,73.8800
+hospital_id,name,area,lat,lon
+H1,Ruby Hall Clinic,Dhayari,18.5200,73.8500
+H2,Aditya Birla Hospital,Pimple Saudagar,18.5400,73.8600
+H3,Sassoon General Hospital,Shivaji Nagar,18.5000,73.8200
+H4,Columbia Asia Hospital,Kharadi,18.5300,73.8800
