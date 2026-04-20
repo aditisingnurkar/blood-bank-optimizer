@@ -1,0 +1,7 @@
+request_id,hospital_id,blood_type,units_required,urgency_level,request_date
+R1,H1,A+,5,High,2025-04-20
+R2,H2,O+,8,Medium,2025-04-21
+R3,H3,B+,3,Low,2025-04-22
+R4,H4,AB+,2,High,2025-04-23
+R5,H1,O-,4,Medium,2025-04-24
+R6,H2,A-,6,High,2025-04-25

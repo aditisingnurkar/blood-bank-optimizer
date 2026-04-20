@@ -2,7 +2,42 @@ import pandas as pd
 import math
 import os
 
-# Haversine formula
+# ==============================
+# Person 1: Load + Validate Inventory
+# ==============================
+
+def load_inventory():
+    df = pd.read_csv("data/blood_inventory.csv")
+
+    valid_types = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+
+    assert (df["units_available"] >= 0).all(), "Negative units found"
+    assert df["blood_type"].isin(valid_types).all(), "Invalid blood type found"
+
+    return df
+
+
+# ==============================
+# Person 2: Load + Validate Requests
+# ==============================
+
+def load_requests():
+    df = pd.read_csv("data/hospital_requests.csv")
+
+    valid_types = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+    valid_urgency = ["High", "Medium", "Low"]
+
+    assert (df["units_required"] > 0).all(), "Units must be greater than 0"
+    assert df["blood_type"].isin(valid_types).all(), "Invalid blood type found"
+    assert df["urgency_level"].isin(valid_urgency).all(), "Invalid urgency level"
+
+    return df
+
+
+# ==============================
+# Haversine Distance Function
+# ==============================
+
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371
 
@@ -17,11 +52,21 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 
-# Load data
+# ==============================
+# Load Data
+# ==============================
+
 banks = pd.read_csv("data/blood_banks.csv")
 hospitals = pd.read_csv("data/hospitals.csv")
 
-# Data cleaning
+inventory = load_inventory()   # Person 1
+requests = load_requests()     # Person 2   <-- FIXED (important)
+
+
+# ==============================
+# Data Preprocessing (Person 2)
+# ==============================
+
 banks = banks.drop_duplicates().dropna()
 hospitals = hospitals.drop_duplicates().dropna()
 
@@ -31,7 +76,11 @@ banks["lon"] = banks["lon"].astype(float)
 hospitals["lat"] = hospitals["lat"].astype(float)
 hospitals["lon"] = hospitals["lon"].astype(float)
 
-# Distance matrix generation
+
+# ==============================
+# Person 3: Distance Matrix
+# ==============================
+
 result = []
 
 for _, b in banks.iterrows():
@@ -48,13 +97,21 @@ for _, b in banks.iterrows():
 
 df = pd.DataFrame(result)
 
+
+# ==============================
 # Validation
+# ==============================
+
 assert df.isnull().sum().sum() == 0, "Missing values found"
 assert (df["distance_km"] >= 0).all(), "Negative distance found"
 assert (df["estimated_time_min"] >= 0).all(), "Negative time found"
 assert df.duplicated().sum() == 0, "Duplicate rows found"
 
-# Save
+
+# ==============================
+# Save Output
+# ==============================
+
 os.makedirs("output", exist_ok=True)
 df.to_csv("output/distance_matrix.csv", index=False)
 
