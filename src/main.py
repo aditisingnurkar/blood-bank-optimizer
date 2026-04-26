@@ -1,5 +1,5 @@
 # ==============================
-# BLOOD ALLOCATION DASHBOARD (FINAL CLEAN VERSION)
+# BLOOD ALLOCATION DASHBOARD
 # ==============================
 
 import pandas as pd
@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from allocation_engine import allocation_pipeline
+from day2_processing import HospitalRequest   # ✅ ADDED
 
 # ==============================
 # LOAD DATA
@@ -20,6 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 inventory_path = os.path.join(BASE_DIR, "..", "data", "blood_inventory.csv")
 requests_path = os.path.join(BASE_DIR, "..", "data", "hospital_requests.csv")
 distance_path = os.path.join(BASE_DIR, "..", "output", "distance_matrix.csv")
+log_path = os.path.join(BASE_DIR, "..", "output", "distribution_log.csv")  # ✅ ADDED
 
 inventory_df = pd.read_csv(inventory_path)
 requests_df = pd.read_csv(requests_path)
@@ -30,16 +32,30 @@ inventory_df["expiry_date"] = pd.to_datetime(inventory_df["expiry_date"])
 requests_df["request_date"] = pd.to_datetime(requests_df["request_date"])
 
 # ==============================
+# LOGGING FUNCTION ✅ ADDED
+# ==============================
+
+def log_transaction(result, path):
+    log_entry = pd.DataFrame([{
+        "request_id": result["request_id"],
+        "hospital_id": result["hospital_id"],
+        "blood_type": result["blood_type"],
+        "status": result["status"],
+        "message": result["message"],
+        "units_allocated": result["units_allocated"],
+        "details": str(result["details"])
+    }])
+
+    log_entry.to_csv(path, mode='a', header=False, index=False)
+
+
+# ==============================
 # MAIN WINDOW
 # ==============================
 
 root = tk.Tk()
 root.title("Blood Allocation Dashboard")
 root.geometry("1100x700")
-
-# ==============================
-# MAIN FRAME
-# ==============================
 
 main_frame = tk.Frame(root)
 main_frame.pack(fill="both", expand=True)
@@ -54,19 +70,16 @@ right_frame = tk.Frame(main_frame, bd=2, relief="groove")
 right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
 # ==============================
-# LEFT — REQUEST PANEL
+# INPUT PANEL
 # ==============================
 
-tk.Label(left_frame, text="Request Panel",
-         font=("Arial", 14, "bold")).pack(pady=10)
+tk.Label(left_frame, text="Request Panel", font=("Arial", 14, "bold")).pack(pady=10)
 
-# Hospital dropdown
 tk.Label(left_frame, text="Hospital ID").pack()
 hospital_ids = sorted(distance_df["hospital_id"].unique().tolist())
 entry_hospital = ttk.Combobox(left_frame, values=hospital_ids, state="readonly")
 entry_hospital.pack(pady=5)
 
-# Blood type dropdown
 tk.Label(left_frame, text="Blood Type").pack()
 entry_blood = ttk.Combobox(
     left_frame,
@@ -75,12 +88,10 @@ entry_blood = ttk.Combobox(
 )
 entry_blood.pack(pady=5)
 
-# Units
 tk.Label(left_frame, text="Units Required").pack()
 entry_units = tk.Entry(left_frame)
 entry_units.pack(pady=5)
 
-# Urgency
 tk.Label(left_frame, text="Urgency").pack()
 entry_urgency = ttk.Combobox(
     left_frame,
@@ -90,11 +101,10 @@ entry_urgency = ttk.Combobox(
 entry_urgency.pack(pady=5)
 
 # ==============================
-# TABLE (RIGHT)
+# TABLE
 # ==============================
 
-tk.Label(right_frame, text="Blood Availability",
-         font=("Arial", 14, "bold")).pack(pady=10)
+tk.Label(right_frame, text="Blood Availability", font=("Arial", 14, "bold")).pack(pady=10)
 
 columns = ("Bank ID", "Units Available", "Distance (km)")
 table = ttk.Treeview(right_frame, columns=columns, show="headings")
@@ -113,7 +123,7 @@ result_label = tk.Label(root, text="", fg="blue", font=("Arial", 11))
 result_label.pack(pady=5)
 
 # ==============================
-# LOAD INITIAL DATA INTO TABLE
+# LOAD INITIAL DATA
 # ==============================
 
 def load_all_data():
@@ -128,7 +138,7 @@ def load_all_data():
         ))
 
 # ==============================
-# UPDATE TABLE (FILTER + DISTANCE)
+# UPDATE TABLE
 # ==============================
 
 def update_table(blood_type, hospital_id):
@@ -156,43 +166,64 @@ def update_table(blood_type, hospital_id):
         ))
 
 # ==============================
-# SUBMIT FUNCTION
+# SUBMIT FUNCTION (FIXED)
 # ==============================
 
 def submit():
     try:
         blood = entry_blood.get()
         hospital = entry_hospital.get()
-        units = int(entry_units.get())
         urgency = entry_urgency.get()
 
-        if not blood or not hospital:
+        # handle units safely
+        try:
+            units = int(entry_units.get())
+        except:
+            messagebox.showerror("Error", "Enter valid number of units")
+            return
+
+        # ✅ validation
+        if not blood or not hospital or not urgency:
             messagebox.showerror("Error", "Please fill all fields")
+            return
+
+        if units <= 0:
+            messagebox.showerror("Error", "Units must be positive")
             return
 
         update_table(blood, hospital)
 
-        req = type("Req", (), {
-            "request_id": "R1",
-            "hospital_id": hospital,
-            "blood_type": blood,
-            "units_required": units,
-            "get_priority": lambda self: urgency
-        })()
+        # ✅ FIXED request object
+        req = HospitalRequest(
+            request_id="R_NEW",
+            hospital_id=hospital,
+            blood_type=blood,
+            units_required=units,
+            urgency=urgency
+        )
 
         result = allocation_pipeline(inventory_df, [req], distance_df)[0]
 
-        result_label.config(
-            text=f"{result['status']} - {result['message']}"
+        # ✅ logging added
+        log_transaction(result, log_path)
+
+        # ✅ improved output
+        details_text = ", ".join(
+            [f"{d['bank_id']}→{d['units_taken']}" for d in result["details"]]
         )
 
+        result_label.config(
+            text=f"{result['status']} | {result['message']} | {details_text}"
+        )
+
+        # save updated inventory
         inventory_df.to_csv(inventory_path, index=False)
 
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
 # ==============================
-# BUTTON STYLE
+# BUTTON
 # ==============================
 
 def styled_button(parent, text, command, color):
@@ -207,11 +238,10 @@ def styled_button(parent, text, command, color):
         pady=5
     )
 
-# Submit button
 styled_button(left_frame, "Submit Request", submit, "#27ae60").pack(pady=15)
 
 # ==============================
-# GRAPH FUNCTIONS (POPUP)
+# GRAPHS
 # ==============================
 
 def plot_availability():
@@ -246,10 +276,6 @@ def plot_distribution():
     plt.title("Distribution")
     plt.show()
 
-# ==============================
-# GRAPH BUTTONS
-# ==============================
-
 btn_frame = tk.Frame(root)
 btn_frame.pack(pady=10)
 
@@ -259,13 +285,8 @@ styled_button(btn_frame, "Heatmap", plot_heatmap, "#e67e22").grid(row=0, column=
 styled_button(btn_frame, "Distribution", plot_distribution, "#e74c3c").grid(row=0, column=3, padx=5)
 
 # ==============================
-# INITIAL LOAD
+# START
 # ==============================
 
 load_all_data()
-
-# ==============================
-# RUN
-# ==============================
-
 root.mainloop()
