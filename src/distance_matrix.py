@@ -155,9 +155,14 @@ log_path = "output/distribution_log.csv"
 
 if not os.path.exists(log_path):
     log_df = pd.DataFrame(columns=[
-        "bank_id", "hospital_id", "blood_type",
-        "units_sent", "request_id", "status"
-    ])
+    "request_id",
+    "hospital_id",
+    "blood_type",
+    "status",
+    "message",
+    "units_allocated",
+    "details"
+])
     write_csv_file(log_df, log_path)
 
 
