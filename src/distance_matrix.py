@@ -2,9 +2,8 @@ import pandas as pd
 import math
 import os
 
-# ==============================
-# Person 1: Load + Validate Inventory
-# ==============================
+
+# Load + Validate Inventory
 
 def load_inventory():
     df = pd.read_csv("data/blood_inventory.csv")
@@ -17,9 +16,7 @@ def load_inventory():
     return df
 
 
-# ==============================
-# Person 2: Load + Validate Requests
-# ==============================
+# Load + Validate Requests
 
 def load_requests():
     df = pd.read_csv("data/hospital_requests.csv")
@@ -34,9 +31,7 @@ def load_requests():
     return df
 
 
-# ==============================
 # Haversine Distance Function
-# ==============================
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371
@@ -52,28 +47,22 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 
-# ==============================
 # Load Data
-# ==============================
 
 banks = pd.read_csv("data/blood_banks.csv")
 hospitals = pd.read_csv("data/hospitals.csv")
 
-inventory = load_inventory()   # Person 1
-requests = load_requests()     # Person 2
+inventory = load_inventory()   
+requests = load_requests()    
 
 
-# ==============================
-# Person 4: Shared IDs
-# ==============================
+# Shared IDs
 
 bank_ids = banks["bank_id"].unique().tolist()
 hospital_ids = hospitals["hospital_id"].unique().tolist()
 
 
-# ==============================
-# Data Preprocessing (Person 2)
-# ==============================
+# Data Preprocessing
 
 banks = banks.drop_duplicates().dropna()
 hospitals = hospitals.drop_duplicates().dropna()
@@ -85,9 +74,7 @@ hospitals["lat"] = hospitals["lat"].astype(float)
 hospitals["lon"] = hospitals["lon"].astype(float)
 
 
-# ==============================
-# Person 3: Distance Matrix
-# ==============================
+# distance Matrix
 
 result = []
 
@@ -106,9 +93,8 @@ for _, b in banks.iterrows():
 df = pd.DataFrame(result)
 
 
-# ==============================
-# Validation (Distance Matrix)
-# ==============================
+
+# Validation
 
 assert df.isnull().sum().sum() == 0, "Missing values found"
 assert (df["distance_km"] >= 0).all(), "Negative distance found"
@@ -116,9 +102,7 @@ assert (df["estimated_time_min"] >= 0).all(), "Negative time found"
 assert df.duplicated().sum() == 0, "Duplicate rows found"
 
 
-# ==============================
-# Person 4: File Handling Functions
-# ==============================
+# File Handling Functions
 
 def read_csv_file(path):
     return pd.read_csv(path)
@@ -130,9 +114,7 @@ def append_csv_file(dataframe, path):
     dataframe.to_csv(path, mode='a', header=False, index=False)
 
 
-# ==============================
-# Person 4: Cross-file Validation
-# ==============================
+# Cross-file Validation
 
 def validate_ids():
     inventory_bank_ids = set(inventory["bank_id"])
@@ -147,9 +129,7 @@ def validate_ids():
 validate_ids()
 
 
-# ==============================
-# Person 4: Create Log File
-# ==============================
+# Create Log File
 
 log_path = "output/distribution_log.csv"
 
@@ -166,9 +146,7 @@ if not os.path.exists(log_path):
     write_csv_file(log_df, log_path)
 
 
-# ==============================
 # Save Distance Matrix
-# ==============================
 
 os.makedirs("output", exist_ok=True)
 write_csv_file(df, "output/distance_matrix.csv")

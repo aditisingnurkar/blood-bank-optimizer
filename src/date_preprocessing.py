@@ -2,9 +2,7 @@ import pandas as pd
 from functools import reduce
 from abc import ABC, abstractmethod
 
-# ==============================
-# Person 1: Data Cleaning Layer
-# ==============================
+# Data Cleaning Layer
 
 def clean_inventory(df):
     df["collection_date"] = pd.to_datetime(df["collection_date"])
@@ -25,9 +23,7 @@ def clean_requests(df):
     return df
 
 
-# ==============================
-# Person 2: OOP Core (Part 1)
-# ==============================
+# OOP Core-1
 
 class BloodUnit:
     def __init__(self, blood_type, units, expiry_date):
@@ -54,9 +50,7 @@ class BloodBank:
         return [u for u in self.inventory if u.blood_type == blood_type]
 
 
-# ==============================
 # Abstraction: Base Request
-# ==============================
 
 class BaseRequest(ABC):
     def __init__(self, request_id, hospital_id, blood_type, units_required):
@@ -70,9 +64,7 @@ class BaseRequest(ABC):
         pass
 
 
-# ==============================
-# Person 3: OOP Core (Part 2)
-# ==============================
+# OOP Core-2
 
 class HospitalRequest(BaseRequest):
     def __init__(self, request_id, hospital_id, blood_type, units_required, urgency):
@@ -98,9 +90,7 @@ class EmergencyRequest(HospitalRequest):
         return "Emergency"
 
 
-# ==============================
-# Person 4: Functional Programming
-# ==============================
+# Functional Programming
 
 def filter_by_blood_type(inventory, blood_type):
     return list(filter(lambda x: x["blood_type"] == blood_type, inventory))
@@ -114,22 +104,13 @@ def total_units(units_list):
     return reduce(lambda x, y: x + y, units_list, 0)
 
 
-# ==============================
 # Helper Functions
-# ==============================
 
 def check_expiry(row):
     return row["expiry_date"] > pd.Timestamp.now()
 
 
-def urgency_rank(level):
-    ranks = {"High": 3, "Medium": 2, "Low": 1}
-    return ranks.get(level, 0)
-
-
-# ==============================
-# MAIN EXECUTION (TESTING)
-# ==============================
+# Main Execution
 
 if __name__ == "__main__":
     # Load data

@@ -1,15 +1,9 @@
-# ==============================
-# VISUALIZATION MODULE (Day 4)
-# ==============================
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
 
-# ==============================
 # Matplotlib — Basic Graphs
-# ==============================
 
 def plot_blood_availability(inventory_df):
     grouped = inventory_df.groupby("blood_type")["units_available"].sum()
@@ -39,9 +33,7 @@ def plot_demand_over_time(requests_df):
     plt.show()
 
 
-# ==============================
 # Seaborn — Advanced Graphs
-# ==============================
 
 def plot_shortage_heatmap(inventory_df):
     pivot = inventory_df.pivot_table(

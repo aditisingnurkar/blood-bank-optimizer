@@ -1,13 +1,6 @@
-# ==============================
-# DAY 3 — ALLOCATION ENGINE
-# ==============================
-
 import pandas as pd
 
-
-# ==============================
-# Person 1 — Matching Logic
-# ==============================
+# Matching Logic
 
 def match_blood(inventory, blood_type):
     """
@@ -16,9 +9,7 @@ def match_blood(inventory, blood_type):
     return list(filter(lambda x: x["blood_type"] == blood_type, inventory))
 
 
-# ==============================
-# Person 3 — Expiry Logic
-# ==============================
+# Expiry Logic
 
 def filter_valid_units(inventory):
     """
@@ -27,14 +18,9 @@ def filter_valid_units(inventory):
     return list(filter(lambda x: x["expiry_date"] > pd.Timestamp.now(), inventory))
 
 
-# ==============================
-# Person 2 — Sorting Logic
-# ==============================
+# Sorting Logic
 
 def urgency_rank(level):
-    """
-    Convert urgency to numeric priority
-    """
     ranks = {"Emergency": 4, "High": 3, "Medium": 2, "Low": 1}
     return ranks.get(level, 0)
 
@@ -65,9 +51,8 @@ def sort_inventory(inventory):
     )
 
 
-# ==============================
-# Person 4 — Allocation Logic
-# ==============================
+
+# Allocation Logic
 
 def allocate_blood(request, inventory):
     """
@@ -114,11 +99,10 @@ def allocate_blood(request, inventory):
         return ("SUCCESS", "Request fulfilled", allocated, allocation_details)
 
 
-# ==============================
-# Integration — FULL PIPELINE
-# ==============================
+# Integration-Full Pipeline
 
 def allocation_pipeline(inventory_df, requests_list, distance_df):
+    
     """
     Complete allocation pipeline:
     1. Match blood type
@@ -128,6 +112,7 @@ def allocation_pipeline(inventory_df, requests_list, distance_df):
     5. Allocate blood
     """
 
+    inventory_df["expiry_date"] = pd.to_datetime(inventory_df["expiry_date"])
     # Convert DataFrame → list of dicts
     inventory = inventory_df.to_dict("records")
     distance_map = distance_df.to_dict("records")

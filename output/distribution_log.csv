@@ -14,3 +14,7 @@ R_NEW,H3,B+,FAILED,No stock available,0,[]
 R_NEW,H1,B+,SUCCESS,Request fulfilled,1,"[{'bank_id': 'B1', 'units_taken': 1}]"
 R_NEW,H2,AB+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
 R_NEW,H2,AB+,PARTIAL,Only 5 units allocated,5,"[{'bank_id': 'B3', 'units_taken': 5}]"
+R_NEW,H1,A+,SUCCESS,Request fulfilled,5,"[{'bank_id': 'B1', 'units_taken': 5}]"
+R_NEW,H2,AB+,PARTIAL,Only 5 units allocated,5,"[{'bank_id': 'B3', 'units_taken': 5}]"
+R_NEW,H3,AB-,FAILED,No stock available,0,[]
+R_NEW,H1,O+,SUCCESS,Request fulfilled,20,"[{'bank_id': 'B1', 'units_taken': 15}, {'bank_id': 'B4', 'units_taken': 5}]"
