@@ -1,47 +1,30 @@
 import pandas as pd
 
-# Matching Logic
-
+# Filtering Inventory by required blood type
 def match_blood(inventory, blood_type):
-    """
-    Filter inventory by required blood type
-    """
     return list(filter(lambda x: x["blood_type"] == blood_type, inventory))
 
 
-# Expiry Logic
-
+#Filtering expired blood units
 def filter_valid_units(inventory):
-    """
-    Remove expired blood units
-    """
     return list(filter(lambda x: x["expiry_date"] > pd.Timestamp.now(), inventory))
 
 
-# Sorting Logic
-
+# Sorting Logic (assigning numbers to urgency levels for sorting)
 def urgency_rank(level):
     ranks = {"Emergency": 4, "High": 3, "Medium": 2, "Low": 1}
     return ranks.get(level, 0)
 
-
+# Sorting requests by urgency
 def sort_requests(requests):
-    """
-    Sort requests by urgency (highest first)
-    """
     return sorted(
         requests,
         key=lambda r: urgency_rank(r.get_priority()),
         reverse=True
     )
 
-
+# Sorting inventory by distance and expiry
 def sort_inventory(inventory):
-    """
-    Sort inventory by:
-    1. Distance (nearest first)
-    2. Expiry (earliest first)
-    """
     return sorted(
         inventory,
         key=lambda x: (
@@ -51,22 +34,14 @@ def sort_inventory(inventory):
     )
 
 
-
-# Allocation Logic
-
+# Allocation Logic (full, partial and no stock allocation)
 def allocate_blood(request, inventory):
-    """
-    Allocate blood units to a request
-    Handles:
-    - Full allocation
-    - Partial allocation
-    - No stock
-    """
     required = request.units_required
     allocated = 0
     allocation_details = []
 
-    for item in inventory:
+    #inventory stores list of banks with available blood types and number of units
+    for item in inventory:       
         if required <= 0:
             break
 
@@ -75,6 +50,7 @@ def allocate_blood(request, inventory):
         if available <= 0:
             continue
 
+        #cannot allocate more than required or available
         used = min(available, required)
 
         # Update inventory
@@ -88,7 +64,6 @@ def allocate_blood(request, inventory):
             "units_taken": used
         })
 
-    # Return status
     if allocated == 0:
         return ("FAILED", "No stock available", 0, allocation_details)
 
@@ -99,21 +74,14 @@ def allocate_blood(request, inventory):
         return ("SUCCESS", "Request fulfilled", allocated, allocation_details)
 
 
-# Integration-Full Pipeline
+# Full Integration
 
 def allocation_pipeline(inventory_df, requests_list, distance_df):
-    
-    """
-    Complete allocation pipeline:
-    1. Match blood type
-    2. Remove expired
-    3. Attach distance
-    4. Sort inventory
-    5. Allocate blood
-    """
 
+    # Convert expiry_date to datetime object for filtering
     inventory_df["expiry_date"] = pd.to_datetime(inventory_df["expiry_date"])
-    # Convert DataFrame → list of dicts
+
+    # Convert DataFrame to list of dicts
     inventory = inventory_df.to_dict("records")
     distance_map = distance_df.to_dict("records")
 
@@ -124,22 +92,22 @@ def allocation_pipeline(inventory_df, requests_list, distance_df):
 
     for req in sorted_requests:
 
-        # Step 1: Match blood type
+        # Match blood type
         matched = match_blood(inventory, req.blood_type)
 
-        # Step 2: Remove expired units
+        # Remove expired units
         valid = filter_valid_units(matched)
 
-        # Step 3: Attach distance from matrix
+        # Attach distance from matrix
         for item in valid:
             for d in distance_map:
                 if d["bank_id"] == item["bank_id"] and d["hospital_id"] == req.hospital_id:
                     item["distance_km"] = d["distance_km"]
 
-        # Step 4: Sort inventory
+        # Sort inventory
         sorted_inventory = sort_inventory(valid)
 
-        # Step 5: Allocate blood
+        # Allocate blood
         status, message, units, details = allocate_blood(req, sorted_inventory)
 
         # Store result
