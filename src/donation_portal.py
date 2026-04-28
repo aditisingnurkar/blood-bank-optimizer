@@ -9,7 +9,7 @@ import pathlib
 
 from PIL import Image, ImageTk
 
-import image_processor as ip
+import src.image_processor as ip
 
 
 # ─────────────────────────────────────────────────────────────

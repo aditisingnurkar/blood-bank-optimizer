@@ -45,3 +45,36 @@ R_NEW,H3,A+,SUCCESS,Request fulfilled,3,"[{'bank_id': 'B4', 'units_taken': 3}]"
 R_NEW,H3,A+,SUCCESS,Request fulfilled,3,"[{'bank_id': 'B4', 'units_taken': 3}]"
 R_NEW,H3,A+,SUCCESS,Request fulfilled,3,"[{'bank_id': 'B4', 'units_taken': 3}]"
 R_NEW,H3,A+,SUCCESS,Request fulfilled,3,"[{'bank_id': 'B4', 'units_taken': 3}]"
+R_NEW,H3,AB-,FAILED,No stock available,0,[]
+R_NEW,H3,AB-,FAILED,No stock available,0,[]
+R_NEW,H2,B+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B1', 'units_taken': 2}]"
+R_NEW,H2,B+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B1', 'units_taken': 2}]"
+R_NEW,H2,B+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B1', 'units_taken': 2}]"
+R_NEW,H2,B+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B1', 'units_taken': 2}]"
+R_NEW,H2,B+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B1', 'units_taken': 2}]"
+R_NEW,H2,AB+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
+R_NEW,H2,AB+,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
+R_NEW,H2,AB+,PARTIAL,Only 1 units allocated,1,"[{'bank_id': 'B3', 'units_taken': 1}]"
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H1,AB+,FAILED,No stock available,0,[]
+R_NEW,H4,AB+,FAILED,No stock available,0,[]
+R_NEW,H4,AB+,FAILED,No stock available,0,[]
+R_NEW,H4,AB+,FAILED,No stock available,0,[]
+R_NEW,H3,AB+,FAILED,No stock available,0,[]
+R_NEW,H3,AB+,FAILED,No stock available,0,[]
+R_NEW,H3,AB+,FAILED,No stock available,0,[]
+R_NEW,H3,AB+,FAILED,No stock available,0,[]
+R_NEW,H3,B-,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
+R_NEW,H3,B-,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
+R_NEW,H3,B-,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B3', 'units_taken': 2}]"
+R_NEW,H3,B-,PARTIAL,Only 1 units allocated,1,"[{'bank_id': 'B3', 'units_taken': 1}]"
+R_NEW,H3,B-,FAILED,No stock available,0,[]
+R_NEW,H3,B-,FAILED,No stock available,0,[]
+R_NEW,H3,B-,FAILED,No stock available,0,[]
+R_NEW,H3,A-,SUCCESS,Request fulfilled,2,"[{'bank_id': 'B2', 'units_taken': 2}]"

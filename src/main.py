@@ -9,9 +9,9 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import seaborn as sns
 
-from allocation_engine import allocation_pipeline
-from data_preprocessing import HospitalRequest
-from donation_portal import open_donation_portal
+from src.allocation_engine import allocation_pipeline
+from src.data_preprocessing import HospitalRequest
+from src.donation_portal import open_donation_portal
 
 
 # ─────────────────────────────────────────────────────────────
@@ -407,19 +407,20 @@ class BloodDashboard(tk.Tk):
         brk_wrap.pack(fill="both", expand=True, padx=14, pady=(8, 14))
 
         brk_cols = ("bank", "distance_km", "expiry", "days_left",
-                    "units_available", "units_taken")
+                    "stock_before", "units_taken", "stock_after")
         self.brk_table = ttk.Treeview(brk_wrap, columns=brk_cols,
                                        show="headings", height=7)
         for col, hd, w, a in [
-            ("bank",            "Bank",          80,  "w"),
-            ("distance_km",     "Distance (km)", 100, "center"),
-            ("expiry",          "Expiry Date",   100, "center"),
-            ("days_left",       "Days Left",      76, "center"),
-            ("units_available", "Stock",          70, "center"),
-            ("units_taken",     "Allocated",      76, "center"),
+            ("bank",         "Bank",          80,  "w"),
+            ("distance_km",  "Distance (km)", 100, "center"),
+            ("expiry",       "Expiry Date",   100, "center"),
+            ("days_left",    "Days Left",      76, "center"),
+            ("stock_before", "Stock Before",   90, "center"),
+            ("units_taken",  "Allocated",      76, "center"),
+            ("stock_after",  "Stock After",    90, "center"),
         ]:
             self.brk_table.heading(col, text=hd)
-            self.brk_table.column(col, width=w, anchor=a, minwidth=50)
+            self.brk_table.column(col, width=w, anchor=a, minwidth=40)
 
         bvsb = ttk.Scrollbar(brk_wrap, orient="vertical",
                               command=self.brk_table.yview)
@@ -592,7 +593,17 @@ class BloodDashboard(tk.Tk):
         result = allocation_pipeline(inventory_df, [req], distance_df)[0]
         log_transaction(result)
 
-        # Deduct allocated units from inventory_df in memory
+        # ── Capture stock BEFORE deduction so breakdown can show it ──
+        pre_stock = {}
+        for detail in result.get("details", []):
+            bid = detail["bank_id"]
+            ir  = inventory_df[
+                (inventory_df["bank_id"]    == bid) &
+                (inventory_df["blood_type"] == blood)
+            ]
+            pre_stock[bid] = int(ir.iloc[0]["units_available"]) if not ir.empty else 0
+
+        # ── Deduct allocated units from inventory_df in memory ──
         for detail in result.get("details", []):
             bank_id     = detail["bank_id"]
             units_taken = detail["units_taken"]
@@ -604,15 +615,15 @@ class BloodDashboard(tk.Tk):
             inventory_df.loc[mask, "units_available"] = (
                 inventory_df.loc[mask, "units_available"].clip(lower=0))
 
-        # Persist to disk
+        # ── Persist to disk ──
         inventory_df.to_csv(_path("data", "blood_inventory.csv"), index=False)
 
-        # Refresh table, stats, chart
+        # ── Refresh inventory table, stats, chart ──
         self._load_table(highlight_blood=blood, highlight_hospital=hospital)
         self._refresh_stats()
         self._chart_availability()
 
-        # Update result display
+        # ── Update result display ──
         status  = result["status"]
         details = result.get("details", [])
         detail_str = ", ".join(
@@ -640,43 +651,61 @@ class BloodDashboard(tk.Tk):
 
         self.result_var.set(f"{result['message']}\n{detail_str}")
 
-        # Fill breakdown table
-        self._fill_breakdown(details, hospital, blood)
+        # Fill breakdown table — pass pre-deduction stock
+        self._fill_breakdown(details, hospital, blood, pre_stock)
 
-    def _fill_breakdown(self, details, hospital_id, blood_type):
+    # ── FILL BREAKDOWN ───────────────────────────────────────
+
+    def _fill_breakdown(self, details, hospital_id, blood_type, pre_stock=None):
+        """
+        Populate the 'Banks used in this allocation' treeview.
+
+        Columns:
+          Bank | Distance (km) | Expiry Date | Days Left |
+          Stock Before | Allocated | Stock After
+
+        Stock Before = units available BEFORE this allocation.
+        Stock After  = units available NOW (live from inventory_df post-deduction).
+        """
         for r in self.brk_table.get_children():
             self.brk_table.delete(r)
 
+        pre_stock = pre_stock or {}
         now = pd.Timestamp.now()
+
         for d in details:
             bid = d["bank_id"]
             ut  = d["units_taken"]
 
-            dr  = distance_df[(distance_df["bank_id"]     == bid) &
-                               (distance_df["hospital_id"] == hospital_id)]
+            # Distance to requesting hospital
+            dr   = distance_df[(distance_df["bank_id"]     == bid) &
+                                (distance_df["hospital_id"] == hospital_id)]
             dist = (f"{dr['distance_km'].values[0]:.1f}"
                     if not dr.empty else "—")
 
+            # Current (post-deduction) row from inventory
             ir = inventory_df[inventory_df["bank_id"] == bid]
             if not ir.empty:
-                exp   = ir.iloc[0]["expiry_date"].strftime("%Y-%m-%d")
-                days  = (ir.iloc[0]["expiry_date"] - now).days
-                stock = int(ir.iloc[0]["units_available"])
+                exp         = ir.iloc[0]["expiry_date"].strftime("%Y-%m-%d")
+                days        = (ir.iloc[0]["expiry_date"] - now).days
+                stock_after = int(ir.iloc[0]["units_available"])
             else:
-                exp, days, stock = "—", "—", "—"
+                exp, days, stock_after = "—", "—", "—"
+
+            stock_before = pre_stock.get(bid, "—")
 
             self.brk_table.insert("", "end", tags=("allocated",),
-                values=(bid, dist, exp, days, stock, ut))
+                values=(bid, dist, exp, days,
+                        stock_before, ut, stock_after))
 
-        # Update sort note with live values from first bank
+        # Update sort note with primary bank details
         if details:
-            now = pd.Timestamp.now()
             first = details[0]["bank_id"]
-            dr = distance_df[(distance_df["bank_id"]     == first) &
-                              (distance_df["hospital_id"] == hospital_id)]
+            dr    = distance_df[(distance_df["bank_id"]     == first) &
+                                 (distance_df["hospital_id"] == hospital_id)]
             d_str = (f"{dr['distance_km'].values[0]:.1f} km"
                      if not dr.empty else "—")
-            ir = inventory_df[inventory_df["bank_id"] == first]
+            ir    = inventory_df[inventory_df["bank_id"] == first]
             days2 = ((ir.iloc[0]["expiry_date"] - now).days
                      if not ir.empty else "—")
             self.v_sort_note.set(
