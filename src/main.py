@@ -1,547 +1,539 @@
-"""
-Blood Allocation Dashboard — Day 4
-Redesigned UI with tkinter + ttk styling
-Dark clinical aesthetic: deep navy + crimson accents
-"""
-
+import os
 import pandas as pd
 import tkinter as tk
-from tkinter import ttk, messagebox, font as tkfont
-import os
-import math
+from tkinter import ttk, messagebox
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import seaborn as sns
 
-from src.allocation_engine import allocation_pipeline
-from src.data_preprocessing import HospitalRequest
-from src.donation_portal import open_donation_portal          # ← NEW
+from allocation_engine import allocation_pipeline
+from data_preprocessing import HospitalRequest
+from donation_portal import open_donation_portal
 
 
-# ============================================================
-# COLOUR PALETTE
-# ============================================================
-
-C = {
-    "bg":          "#0A0E1A",   # near-black navy
-    "panel":       "#111827",   # card background
-    "border":      "#1E2D45",   # subtle border
-    "accent":      "#C0392B",   # blood crimson
-    "accent2":     "#E74C3C",   # lighter red
-    "gold":        "#F39C12",   # warning / partial
-    "green":       "#27AE60",   # success
-    "text":        "#ECF0F1",   # primary text
-    "muted":       "#7F8C9A",   # secondary text
-    "entry_bg":    "#0D1520",   # input background
-    "entry_fg":    "#ECF0F1",
-    "hover":       "#1A2840",
-    "table_alt":   "#0F1825",
-    "table_sel":   "#1B2F4A",
-    "header_bg":   "#0D1520",
-    "separator":   "#1E3050",
-}
-
-FONTS = {
-    "title":   ("Courier New", 20, "bold"),
-    "heading": ("Courier New", 12, "bold"),
-    "label":   ("Courier New", 9),
-    "input":   ("Courier New", 10),
-    "mono":    ("Courier New", 9),
-    "big":     ("Courier New", 28, "bold"),
-    "status":  ("Courier New", 10, "bold"),
-    "small":   ("Courier New", 8),
-}
-
-# ============================================================
-# LOAD DATA
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def _path(*parts):
     return os.path.join(BASE_DIR, "..", *parts)
 
-inventory_df  = pd.read_csv(_path("data", "blood_inventory.csv"))
-requests_df   = pd.read_csv(_path("data", "hospital_requests.csv"))
-distance_df   = pd.read_csv(_path("output", "distance_matrix.csv"))
-log_path      = _path("output", "distribution_log.csv")
+
+# ─────────────────────────────────────────────────────────────
+# DATA
+# ─────────────────────────────────────────────────────────────
+
+inventory_df = pd.read_csv(_path("data", "blood_inventory.csv"))
+requests_df  = pd.read_csv(_path("data", "hospital_requests.csv"))
+distance_df  = pd.read_csv(_path("output", "distance_matrix.csv"))
+log_path     = _path("output", "distribution_log.csv")
 
 inventory_df["expiry_date"] = pd.to_datetime(inventory_df["expiry_date"])
 requests_df["request_date"] = pd.to_datetime(requests_df["request_date"])
 
 
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# PALETTE  — navy, not too dark, not flashy
+# ─────────────────────────────────────────────────────────────
+
+BG      = "#1C2B3A"
+PANEL   = "#243447"
+PANEL2  = "#1A2535"
+BORDER  = "#2E4158"
+TEXT    = "#E8EDF2"
+MUTED   = "#7D93A8"
+ACCENT  = "#4A9EDB"
+DIM_ACC = "#3A7EBB"
+SUCCESS = "#4CAF82"
+WARN    = "#E8A83A"
+FAIL    = "#E05C5C"
+ALT     = "#1E2F3F"
+SEL_ROW = "#2A3F52"
+
+SC = [
+    ("#4A9EDB", "#4A9EDB"),
+    ("#4CAF82", "#4CAF82"),
+    ("#E8A83A", "#E8A83A"),
+    ("#E05C5C", "#E05C5C"),
+]
+
+FF = "Segoe UI"
+
+def F(sz, wt="normal"):
+    return (FF, sz, wt)
+
+
+# ─────────────────────────────────────────────────────────────
 # LOGGING
-# ============================================================
+# ─────────────────────────────────────────────────────────────
 
 def log_transaction(result):
-    entry = pd.DataFrame([{
-        "request_id":     result["request_id"],
-        "hospital_id":    result["hospital_id"],
-        "blood_type":     result["blood_type"],
-        "status":         result["status"],
-        "message":        result["message"],
-        "units_allocated":result["units_allocated"],
-        "details":        str(result["details"]),
-    }])
-    entry.to_csv(log_path, mode="a", header=False, index=False)
+    pd.DataFrame([{
+        "request_id":      result["request_id"],
+        "hospital_id":     result["hospital_id"],
+        "blood_type":      result["blood_type"],
+        "status":          result["status"],
+        "message":         result["message"],
+        "units_allocated": result["units_allocated"],
+        "details":         str(result["details"]),
+    }]).to_csv(log_path, mode="a", header=False, index=False)
 
 
-# ============================================================
-# HELPER WIDGETS
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# WIDGET HELPERS
+# ─────────────────────────────────────────────────────────────
 
-def make_card(parent, **kwargs):
-    """A styled card frame."""
-    defaults = dict(bg=C["panel"], bd=0, highlightthickness=1,
-                    highlightbackground=C["border"], highlightcolor=C["accent"])
-    defaults.update(kwargs)
-    return tk.Frame(parent, **defaults)
+def make_card(parent, **kw):
+    d = dict(bg=PANEL, highlightthickness=1,
+             highlightbackground=BORDER, bd=0)
+    d.update(kw)
+    return tk.Frame(parent, **d)
 
+def lbl(parent, text, sz=9, wt="normal", fg=TEXT, **kw):
+    bg = kw.pop("bg", parent["bg"])
+    return tk.Label(parent, text=text, font=F(sz, wt), fg=fg, bg=bg, **kw)
 
-def make_label(parent, text, style="label", fg=None, **kwargs):
-    bg = kwargs.pop("bg", parent["bg"])
-    return tk.Label(parent, text=text,
-                    font=FONTS[style],
-                    fg=fg or C["text"],
-                    bg=bg,
-                    **kwargs)
+def hsep(parent):
+    return tk.Frame(parent, bg=BORDER, height=1)
 
+def styled_combobox(parent, values, width=16):
+    return ttk.Combobox(parent, values=values, state="readonly",
+                        width=width, font=F(9))
 
-def make_separator(parent, orient="h"):
-    f = tk.Frame(parent,
-                 bg=C["separator"],
-                 height=1 if orient == "h" else None,
-                 width=None if orient == "h" else 1)
-    return f
+def styled_entry(parent, width=16):
+    return tk.Entry(parent, font=F(9), bg=PANEL2, fg=TEXT,
+                    insertbackground=ACCENT, relief="flat", bd=0,
+                    highlightthickness=1, highlightbackground=BORDER,
+                    highlightcolor=ACCENT, width=width)
 
-
-def styled_combobox(parent, values, width=22):
-    cb = ttk.Combobox(parent, values=values, state="readonly",
-                      width=width, font=FONTS["input"])
-    cb.configure(foreground=C["entry_fg"])
-    return cb
-
-
-def styled_entry(parent, width=24):
-    e = tk.Entry(parent, width=width,
-                 font=FONTS["input"],
-                 bg=C["entry_bg"],
-                 fg=C["entry_fg"],
-                 insertbackground=C["accent"],
-                 relief="flat",
-                 bd=4,
-                 highlightthickness=1,
-                 highlightbackground=C["border"],
-                 highlightcolor=C["accent"])
-    return e
+def styled_button(parent, text, command, color=None, width=20):
+    color = color or ACCENT
+    b = tk.Button(parent, text=text, command=command,
+                  font=F(10, "bold"), bg=color, fg="#FFFFFF",
+                  activebackground=DIM_ACC, activeforeground="#FFFFFF",
+                  relief="flat", bd=0, cursor="hand2",
+                  width=width, pady=8)
+    b.bind("<Enter>", lambda e: b.config(bg=DIM_ACC))
+    b.bind("<Leave>", lambda e: b.config(bg=color))
+    return b
 
 
-def styled_button(parent, text, command, color=None, width=22):
-    color = color or C["accent"]
-    btn = tk.Button(parent, text=text, command=command,
-                    font=FONTS["heading"],
-                    bg=color, fg=C["text"],
-                    activebackground=C["accent2"],
-                    activeforeground=C["text"],
-                    relief="flat", bd=0,
-                    cursor="hand2",
-                    width=width,
-                    pady=8)
-    btn.bind("<Enter>", lambda e: btn.config(bg=C["accent2"]))
-    btn.bind("<Leave>", lambda e: btn.config(bg=color))
-    return btn
-
-
-# ============================================================
-# CONFIGURE TTK STYLES
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# TTK STYLES
+# ─────────────────────────────────────────────────────────────
 
 def configure_styles(root):
-    style = ttk.Style(root)
-    style.theme_use("clam")
+    s = ttk.Style(root)
+    s.theme_use("clam")
 
-    style.configure("Treeview",
-                    background=C["panel"],
-                    foreground=C["text"],
-                    fieldbackground=C["panel"],
-                    rowheight=26,
-                    font=FONTS["mono"],
-                    borderwidth=0)
-    style.configure("Treeview.Heading",
-                    background=C["header_bg"],
-                    foreground=C["accent"],
-                    font=FONTS["heading"],
-                    relief="flat",
-                    borderwidth=0)
-    style.map("Treeview",
-              background=[("selected", C["table_sel"])],
-              foreground=[("selected", C["text"])])
-    style.map("Treeview.Heading",
-              background=[("active", C["accent"])])
+    s.configure("Treeview",
+                background=PANEL, foreground=TEXT,
+                fieldbackground=PANEL, rowheight=26,
+                font=F(9), borderwidth=0)
+    s.configure("Treeview.Heading",
+                background=PANEL2, foreground=ACCENT,
+                font=F(9, "bold"), relief="flat", borderwidth=0)
+    s.map("Treeview",
+          background=[("selected", SEL_ROW)],
+          foreground=[("selected", TEXT)])
+    s.map("Treeview.Heading",
+          background=[("active", ACCENT)])
 
-    style.configure("TCombobox",
-                    fieldbackground=C["entry_bg"],
-                    background=C["entry_bg"],
-                    foreground=C["entry_fg"],
-                    arrowcolor=C["accent"],
-                    bordercolor=C["border"],
-                    lightcolor=C["border"],
-                    darkcolor=C["border"],
-                    insertcolor=C["accent"])
-    style.map("TCombobox",
-              fieldbackground=[("readonly", C["entry_bg"])],
-              foreground=[("readonly", C["entry_fg"])],
-              selectbackground=[("readonly", C["accent"])],
-              selectforeground=[("readonly", C["text"])])
+    s.configure("TCombobox",
+                fieldbackground=PANEL2, background=PANEL2,
+                foreground=TEXT, arrowcolor=ACCENT,
+                bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
+                insertcolor=ACCENT)
+    s.map("TCombobox",
+          fieldbackground=[("readonly", PANEL2)],
+          foreground=[("readonly", TEXT)],
+          selectbackground=[("readonly", ACCENT)],
+          selectforeground=[("readonly", TEXT)])
 
-    style.configure("Vertical.TScrollbar",
-                    background=C["panel"],
-                    troughcolor=C["bg"],
-                    arrowcolor=C["muted"])
+    s.configure("Vertical.TScrollbar",
+                background=PANEL, troughcolor=BG,
+                arrowcolor=MUTED, bordercolor=BORDER)
 
 
-# ============================================================
-# STAT CARD
-# ============================================================
-
-def make_stat_card(parent, title, value, color):
-    card = make_card(parent, highlightbackground=color)
-    card.pack(side="left", fill="both", expand=True, padx=6, pady=4)
-
-    make_label(card, title, style="small", fg=C["muted"]).pack(
-        anchor="w", padx=12, pady=(10, 0))
-    make_label(card, value, style="big", fg=color).pack(
-        anchor="w", padx=12, pady=(0, 10))
-    return card
-
-
-# ============================================================
-# MAIN APP
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# APP
+# ─────────────────────────────────────────────────────────────
 
 class BloodDashboard(tk.Tk):
 
     def __init__(self):
         super().__init__()
         self.title("HEMATIX — Blood Allocation System")
-        self.geometry("1280x780")
-        self.minsize(1100, 700)
-        self.configure(bg=C["bg"])
+        self.geometry("1360x860")
+        self.minsize(1200, 780)
+        self.configure(bg=BG)
         self.resizable(True, True)
-
         configure_styles(self)
         self._build_ui()
         self._load_table()
         self._refresh_stats()
 
-    # ----------------------------------------------------------
-    # TOP BAR
-    # ----------------------------------------------------------
+    # ── TOPBAR ───────────────────────────────────────────────
 
-    def _build_topbar(self, parent):
-        bar = tk.Frame(parent, bg=C["panel"], height=56)
-        bar.pack(fill="x", side="top")
+    def _build_topbar(self):
+        bar = tk.Frame(self, bg=PANEL, height=52,
+                       highlightthickness=1, highlightbackground=BORDER)
+        bar.pack(fill="x")
         bar.pack_propagate(False)
 
-        tk.Frame(bar, bg=C["accent"], height=3).pack(fill="x", side="top")
+        tk.Frame(bar, bg=ACCENT, width=4).pack(side="left", fill="y")
 
-        inner = tk.Frame(bar, bg=C["panel"])
-        inner.pack(fill="both", expand=True, padx=20)
+        inner = tk.Frame(bar, bg=PANEL)
+        inner.pack(fill="both", expand=True, padx=16)
 
-        make_label(inner, "◈  HEMATIX", style="title", fg=C["accent"]).pack(
-            side="left", pady=8)
-        make_label(inner, "BLOOD ALLOCATION MANAGEMENT SYSTEM",
-                   style="small", fg=C["muted"]).pack(side="left", padx=16, pady=8)
+        lbl(inner, "◈  HEMATIX", 14, "bold",
+            fg=ACCENT, bg=PANEL).pack(side="left", pady=14)
+        lbl(inner, "BLOOD ALLOCATION MANAGEMENT SYSTEM", 9,
+            fg=MUTED, bg=PANEL).pack(side="left", padx=14)
 
-        dot_frame = tk.Frame(inner, bg=C["panel"])
-        dot_frame.pack(side="right", pady=8)
-        tk.Canvas(dot_frame, width=10, height=10, bg=C["panel"],
-                  highlightthickness=0).pack(side="left")
-        make_label(dot_frame, "● LIVE", style="small",
-                   fg=C["green"]).pack(side="left")
+        dot = tk.Frame(inner, bg=PANEL)
+        dot.pack(side="right")
+        lbl(dot, "● LIVE", 9, fg=SUCCESS, bg=PANEL).pack(pady=14)
 
-    # ----------------------------------------------------------
-    # BUILD FULL UI
-    # ----------------------------------------------------------
+    # ── FULL UI ──────────────────────────────────────────────
 
     def _build_ui(self):
-        self._build_topbar(self)
+        self._build_topbar()
 
-        content = tk.Frame(self, bg=C["bg"])
-        content.pack(fill="both", expand=True, padx=14, pady=(10, 14))
+        body = tk.Frame(self, bg=BG)
+        body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
-        left  = tk.Frame(content, bg=C["bg"], width=270)
-        mid   = tk.Frame(content, bg=C["bg"])
-        right = tk.Frame(content, bg=C["bg"], width=430)
+        # sidebar | main
+        sidebar = tk.Frame(body, bg=BG, width=300)
+        sidebar.pack(side="left", fill="y", padx=(0, 10))
+        sidebar.pack_propagate(False)
 
-        left.pack(side="left",  fill="y",    padx=(0, 8))
-        mid.pack( side="left",  fill="both", expand=True, padx=(0, 8))
-        right.pack(side="right", fill="y")
+        main = tk.Frame(body, bg=BG)
+        main.pack(side="left", fill="both", expand=True)
 
-        left.pack_propagate(False)
-        right.pack_propagate(False)
+        self._build_sidebar(sidebar)
+        self._build_main(main)
 
-        self._build_input_panel(left)
-        self._build_center_panel(mid)
-        self._build_right_panel(right)
+    # ── SIDEBAR: form + stats ─────────────────────────────────
 
-    # ----------------------------------------------------------
-    # LEFT — INPUT PANEL
-    # ----------------------------------------------------------
+    def _build_sidebar(self, parent):
 
-    def _build_input_panel(self, parent):
-        card = make_card(parent)
-        card.pack(fill="both", expand=True)
+        # ── FORM CARD ──
+        form_card = make_card(parent)
+        form_card.pack(fill="x", pady=(12, 0))
 
-        header = tk.Frame(card, bg=C["accent"], height=36)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-        make_label(header, "  ⊕  NEW REQUEST", style="heading",
-                   fg=C["text"], bg=C["accent"]).pack(side="left", padx=8, pady=6)
+        fhdr = tk.Frame(form_card, bg=ACCENT, height=36)
+        fhdr.pack(fill="x")
+        fhdr.pack_propagate(False)
+        lbl(fhdr, "  ⊕  NEW REQUEST", 10, "bold",
+            fg="#FFFFFF", bg=ACCENT).pack(side="left", pady=8)
 
-        body = tk.Frame(card, bg=C["panel"])
-        body.pack(fill="both", expand=True, padx=16, pady=12)
+        fbody = tk.Frame(form_card, bg=PANEL)
+        fbody.pack(fill="x", padx=14, pady=12)
 
-        # ── RESULT BOX ──
-        make_label(body, "LAST RESULT", style="small", fg=C["muted"]).pack(anchor="w")
-
-        self.result_card = tk.Frame(body, bg=C["entry_bg"],
-                                    highlightthickness=2,
-                                    highlightbackground=C["border"])
-        self.result_card.pack(fill="x", pady=(4, 0))
-
-        self.result_status_var = tk.StringVar(value="── PENDING ──")
-        self.result_status_lbl = tk.Label(self.result_card,
-                                          textvariable=self.result_status_var,
-                                          font=("Courier New", 13, "bold"),
-                                          fg=C["muted"],
-                                          bg=C["entry_bg"],
-                                          anchor="w",
-                                          padx=10, pady=8)
-        self.result_status_lbl.pack(fill="x")
-
-        self.result_var = tk.StringVar(value="Awaiting submission…")
-        self.result_label = tk.Label(self.result_card,
-                                     textvariable=self.result_var,
-                                     font=FONTS["mono"],
-                                     fg=C["muted"],
-                                     bg=C["entry_bg"],
-                                     wraplength=220,
-                                     justify="left",
-                                     padx=10, pady=0)
-        self.result_label.pack(fill="x", pady=(0, 8))
-
-        make_separator(body).pack(fill="x", pady=12)
-
-        # ── INPUT FIELDS ──
-        def field(label_text, widget):
-            make_label(body, label_text.upper(), style="small",
-                       fg=C["muted"]).pack(anchor="w", pady=(8, 2))
-            widget.pack(fill="x", ipady=4)
+        # 2-column grid — all 4 fields visible without scrolling
+        g = tk.Frame(fbody, bg=PANEL)
+        g.pack(fill="x")
+        g.columnconfigure(0, weight=1)
+        g.columnconfigure(1, weight=1)
 
         hospital_ids = sorted(distance_df["hospital_id"].unique().tolist())
-        self.cb_hospital = styled_combobox(body, hospital_ids)
-        field("Hospital ID", self.cb_hospital)
 
+        lbl(g, "HOSPITAL ID", 8, fg=MUTED, bg=PANEL).grid(
+            row=0, column=0, sticky="w", pady=(4, 2), padx=(0, 6))
+        self.cb_hospital = styled_combobox(g, hospital_ids, width=13)
+        self.cb_hospital.grid(row=1, column=0, sticky="ew",
+                               ipady=3, pady=(0, 6), padx=(0, 6))
+
+        lbl(g, "BLOOD TYPE", 8, fg=MUTED, bg=PANEL).grid(
+            row=0, column=1, sticky="w", pady=(4, 2))
         self.cb_blood = styled_combobox(
-            body, ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
-        field("Blood Type", self.cb_blood)
+            g, ["A+","A-","B+","B-","AB+","AB-","O+","O-"], width=13)
+        self.cb_blood.grid(row=1, column=1, sticky="ew",
+                            ipady=3, pady=(0, 6))
 
-        self.entry_units = styled_entry(body)
-        field("Units Required", self.entry_units)
+        lbl(g, "UNITS REQUIRED", 8, fg=MUTED, bg=PANEL).grid(
+            row=2, column=0, sticky="w", pady=(4, 2), padx=(0, 6))
+        self.entry_units = styled_entry(g, width=13)
+        self.entry_units.grid(row=3, column=0, sticky="ew",
+                               ipady=4, pady=(0, 6), padx=(0, 6))
 
+        lbl(g, "URGENCY LEVEL", 8, fg=MUTED, bg=PANEL).grid(
+            row=2, column=1, sticky="w", pady=(4, 2))
         self.cb_urgency = styled_combobox(
-            body, ["Emergency", "High", "Medium", "Low"])
-        field("Urgency Level", self.cb_urgency)
+            g, ["Emergency","High","Medium","Low"], width=13)
+        self.cb_urgency.grid(row=3, column=1, sticky="ew",
+                              ipady=3, pady=(0, 6))
 
-        make_separator(body).pack(fill="x", pady=14)
+        hsep(fbody).pack(fill="x", pady=(6, 10))
 
-        # ── BUTTONS ──────────────────────────────────────────────────────  ← NEW
-        styled_button(body, "▶  SUBMIT REQUEST", self._submit,
-                      color=C["accent"]).pack(fill="x")
+        # Submit button
+        styled_button(fbody, "▶  SUBMIT REQUEST",
+                      self._submit, color=ACCENT).pack(fill="x")
 
-        # Donate button — outlined style, distinct from Submit              ← NEW
+        # Donate button — outlined, distinct from submit
         donate_btn = tk.Button(
-            body,
+            fbody,
             text="♥  DONATE BLOOD",
             command=lambda: open_donation_portal(self),
-            font=FONTS["heading"],
-            bg=C["panel"],
-            fg=C["accent"],
-            activebackground=C["accent"],
-            activeforeground=C["text"],
+            font=F(10, "bold"),
+            bg=PANEL,
+            fg=ACCENT,
+            activebackground=ACCENT,
+            activeforeground="#FFFFFF",
             relief="flat", bd=0,
             cursor="hand2",
             pady=7,
             highlightthickness=1,
-            highlightbackground=C["accent"],
-            highlightcolor=C["accent2"],
+            highlightbackground=ACCENT,
+            highlightcolor=DIM_ACC,
         )
         donate_btn.pack(fill="x", pady=(8, 0))
         donate_btn.bind("<Enter>",
-                        lambda e: donate_btn.config(bg=C["accent"], fg=C["text"]))
+            lambda e: donate_btn.config(bg=ACCENT, fg="#FFFFFF"))
         donate_btn.bind("<Leave>",
-                        lambda e: donate_btn.config(bg=C["panel"], fg=C["accent"]))
+            lambda e: donate_btn.config(bg=PANEL, fg=ACCENT))
 
-    # ----------------------------------------------------------
-    # CENTER — STATS + TABLE + CHART
-    # ----------------------------------------------------------
-
-    def _build_center_panel(self, parent):
-        stat_row = tk.Frame(parent, bg=C["bg"])
-        stat_row.pack(fill="x", pady=(0, 8))
+        # ── STAT CARDS 2×2 ──
+        stats_outer = tk.Frame(parent, bg=BG)
+        stats_outer.pack(fill="x", pady=(10, 0))
 
         self.stat_total  = tk.StringVar(value="—")
         self.stat_types  = tk.StringVar(value="—")
         self.stat_banks  = tk.StringVar(value="—")
         self.stat_expiry = tk.StringVar(value="—")
 
-        for title, var, color in [
-            ("TOTAL UNITS",   self.stat_total,  C["accent"]),
-            ("BLOOD TYPES",   self.stat_types,  C["gold"]),
-            ("BANKS",         self.stat_banks,  C["green"]),
-            ("EXPIRING SOON", self.stat_expiry, C["muted"]),
+        specs = [
+            ("TOTAL UNITS",   self.stat_total,  SC[0]),
+            ("BLOOD TYPES",   self.stat_types,  SC[1]),
+            ("ACTIVE BANKS",  self.stat_banks,  SC[2]),
+            ("EXPIRING ≤7d",  self.stat_expiry, SC[3]),
+        ]
+
+        for i, (title, var, (border_c, text_c)) in enumerate(specs):
+            sc = make_card(stats_outer,
+                           highlightbackground=border_c,
+                           highlightthickness=1)
+            row, col = divmod(i, 2)
+            sc.grid(row=row, column=col, sticky="ew",
+                    padx=(0 if col == 0 else 5, 0),
+                    pady=(0 if row == 0 else 5, 0))
+            stats_outer.columnconfigure(col, weight=1)
+
+            inner = tk.Frame(sc, bg=PANEL)
+            inner.pack(padx=10, pady=8, fill="x")
+            lbl(inner, title, 8, fg=MUTED, bg=PANEL).pack(anchor="w")
+            tk.Label(inner, textvariable=var,
+                     font=F(20, "bold"), fg=text_c,
+                     bg=PANEL).pack(anchor="w")
+
+    # ── MAIN AREA ────────────────────────────────────────────
+
+    def _build_main(self, parent):
+        # TOP HALF: result panel | inventory table
+        top = tk.Frame(parent, bg=BG)
+        top.pack(fill="both", expand=True, pady=(12, 10))
+
+        result_col = tk.Frame(top, bg=BG)
+        result_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+        inv_col = tk.Frame(top, bg=BG, width=360)
+        inv_col.pack(side="right", fill="y")
+        inv_col.pack_propagate(False)
+
+        self._build_result_panel(result_col)
+        self._build_inventory_panel(inv_col)
+
+        # BOTTOM: chart strip
+        self._build_chart_panel(parent)
+
+    # ── RESULT PANEL (hero) ──────────────────────────────────
+
+    def _build_result_panel(self, parent):
+        c = make_card(parent)
+        c.pack(fill="both", expand=True)
+
+        # Header
+        rhdr = tk.Frame(c, bg=PANEL2, height=36)
+        rhdr.pack(fill="x")
+        rhdr.pack_propagate(False)
+        lbl(rhdr, "  ▤  ALLOCATION RESULT", 10, "bold",
+            fg=TEXT, bg=PANEL2).pack(side="left", pady=8)
+
+        self.lbl_status_badge = lbl(
+            rhdr, "  PENDING  ", 8, "bold",
+            fg=BG, bg=MUTED)
+        self.lbl_status_badge.pack(side="right", padx=12, pady=6)
+
+        # Big status text
+        status_frame = tk.Frame(c, bg=PANEL)
+        status_frame.pack(fill="x", padx=20, pady=(14, 8))
+
+        self.result_status_var = tk.StringVar(value="── PENDING ──")
+        self.result_status_lbl = tk.Label(
+            status_frame, textvariable=self.result_status_var,
+            font=F(22, "bold"), fg=MUTED, bg=PANEL, anchor="w")
+        self.result_status_lbl.pack(fill="x")
+
+        self.result_var = tk.StringVar(
+            value="Fill in the form and submit a request.")
+        tk.Label(status_frame, textvariable=self.result_var,
+                 font=F(10), fg=MUTED, bg=PANEL,
+                 wraplength=500, justify="left", anchor="w").pack(
+            fill="x", pady=(4, 0))
+
+        hsep(c).pack(fill="x", pady=(8, 0))
+
+        # Breakdown sub-header
+        brk_hdr = tk.Frame(c, bg=PANEL2, height=32)
+        brk_hdr.pack(fill="x")
+        brk_hdr.pack_propagate(False)
+        lbl(brk_hdr, "  Banks used in this allocation", 9, "bold",
+            fg=MUTED, bg=PANEL2).pack(side="left", pady=7)
+
+        self.v_sort_note = tk.StringVar(
+            value="Sorted by: ① nearest distance  ② earliest expiry")
+        tk.Label(brk_hdr, textvariable=self.v_sort_note,
+                 font=F(8), fg=MUTED, bg=PANEL2).pack(
+            side="right", padx=12, pady=7)
+
+        # Breakdown table
+        brk_wrap = tk.Frame(c, bg=PANEL)
+        brk_wrap.pack(fill="both", expand=True, padx=14, pady=(8, 14))
+
+        brk_cols = ("bank", "distance_km", "expiry", "days_left",
+                    "units_available", "units_taken")
+        self.brk_table = ttk.Treeview(brk_wrap, columns=brk_cols,
+                                       show="headings", height=7)
+        for col, hd, w, a in [
+            ("bank",            "Bank",          80,  "w"),
+            ("distance_km",     "Distance (km)", 100, "center"),
+            ("expiry",          "Expiry Date",   100, "center"),
+            ("days_left",       "Days Left",      76, "center"),
+            ("units_available", "Stock",          70, "center"),
+            ("units_taken",     "Allocated",      76, "center"),
         ]:
-            make_stat_card(stat_row, title, var.get(), color)
-        self._stat_cards = (self.stat_total, self.stat_types,
-                            self.stat_banks, self.stat_expiry)
+            self.brk_table.heading(col, text=hd)
+            self.brk_table.column(col, width=w, anchor=a, minwidth=50)
 
-        tbl_card = make_card(parent)
-        tbl_card.pack(fill="both", expand=True)
+        bvsb = ttk.Scrollbar(brk_wrap, orient="vertical",
+                              command=self.brk_table.yview)
+        self.brk_table.configure(yscrollcommand=bvsb.set)
+        self.brk_table.pack(side="left", fill="both", expand=True)
+        bvsb.pack(side="right", fill="y")
 
-        tbl_header = tk.Frame(tbl_card, bg=C["header_bg"], height=36)
-        tbl_header.pack(fill="x")
-        tbl_header.pack_propagate(False)
-        make_label(tbl_header, "  ▤  INVENTORY OVERVIEW", style="heading",
-                   fg=C["text"], bg=C["header_bg"]).pack(side="left", padx=8, pady=6)
+        self.brk_table.tag_configure("allocated", foreground=SUCCESS)
+        self.brk_table.tag_configure("partial",   foreground=WARN)
 
-        filter_row = tk.Frame(tbl_card, bg=C["panel"])
-        filter_row.pack(fill="x", padx=12, pady=8)
-        make_label(filter_row, "FILTER TYPE:", style="small",
-                   fg=C["muted"]).pack(side="left")
-        self.cb_filter = styled_combobox(
-            filter_row,
-            ["All"] + ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-            width=10)
+    # ── INVENTORY PANEL ──────────────────────────────────────
+
+    def _build_inventory_panel(self, parent):
+        c = make_card(parent)
+        c.pack(fill="both", expand=True)
+
+        ihdr = tk.Frame(c, bg=PANEL2, height=36)
+        ihdr.pack(fill="x")
+        ihdr.pack_propagate(False)
+        lbl(ihdr, "  ▤  INVENTORY OVERVIEW", 10, "bold",
+            fg=TEXT, bg=PANEL2).pack(side="left", pady=8)
+
+        filt_row = tk.Frame(c, bg=PANEL)
+        filt_row.pack(fill="x", padx=10, pady=(6, 4))
+        lbl(filt_row, "FILTER TYPE:", 8, fg=MUTED, bg=PANEL).pack(side="left")
+        self.cb_filter = styled_combobox(filt_row,
+            ["All","A+","A-","B+","B-","AB+","AB-","O+","O-"], width=8)
         self.cb_filter.set("All")
-        self.cb_filter.pack(side="left", padx=8)
-        self.cb_filter.bind("<<ComboboxSelected>>", lambda e: self._load_table())
+        self.cb_filter.pack(side="left", padx=6)
+        self.cb_filter.bind("<<ComboboxSelected>>",
+                            lambda e: self._load_table())
 
-        tbl_wrap = tk.Frame(tbl_card, bg=C["panel"])
-        tbl_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        hsep(c).pack(fill="x")
+
+        wrap = tk.Frame(c, bg=PANEL)
+        wrap.pack(fill="both", expand=True, padx=8, pady=(4, 8))
 
         cols = ("bank_id", "blood_type", "units_available", "expiry_date")
-        self.table = ttk.Treeview(tbl_wrap, columns=cols, show="headings",
-                                   selectmode="browse")
+        self.table = ttk.Treeview(wrap, columns=cols,
+                                   show="headings", selectmode="browse")
+        for col, hd, w, a in [
+            ("bank_id",         "Bank",    90,  "w"),
+            ("blood_type",      "Type",    60,  "center"),
+            ("units_available", "Units",   65,  "center"),
+            ("expiry_date",     "Expiry", 110,  "center"),
+        ]:
+            self.table.heading(col, text=hd)
+            self.table.column(col, width=w, anchor=a, minwidth=40)
 
-        headers = {
-            "bank_id":         ("Bank",           90,  "center"),
-            "blood_type":      ("Type",           70,  "center"),
-            "units_available": ("Units",          80,  "center"),
-            "expiry_date":     ("Expiry",         120, "center"),
-        }
-        for col, (heading, w, anchor) in headers.items():
-            self.table.heading(col, text=heading)
-            self.table.column(col, width=w, anchor=anchor, minwidth=50)
-
-        scroll = ttk.Scrollbar(tbl_wrap, orient="vertical",
-                               command=self.table.yview)
-        self.table.configure(yscrollcommand=scroll.set)
+        vsb = ttk.Scrollbar(wrap, orient="vertical",
+                            command=self.table.yview)
+        self.table.configure(yscrollcommand=vsb.set)
         self.table.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
+        vsb.pack(side="right", fill="y")
 
-        self.table.tag_configure("odd",  background=C["table_alt"])
-        self.table.tag_configure("even", background=C["panel"])
+        self.table.tag_configure("odd",  background=ALT)
+        self.table.tag_configure("even", background=PANEL)
+        self.table.tag_configure("warn", foreground=WARN)
+        self.table.tag_configure("crit", foreground=FAIL)
 
-    # ----------------------------------------------------------
-    # RIGHT — CHARTS PANEL
-    # ----------------------------------------------------------
+    # ── CHART PANEL (full-width strip at bottom) ─────────────
 
-    def _build_right_panel(self, parent):
-        card = make_card(parent)
-        card.pack(fill="both", expand=True)
+    def _build_chart_panel(self, parent):
+        c = make_card(parent)
+        c.pack(fill="x")
 
-        header = tk.Frame(card, bg=C["header_bg"], height=36)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-        make_label(header, "  ◉  ANALYTICS", style="heading",
-                   fg=C["text"], bg=C["header_bg"]).pack(side="left", padx=8, pady=6)
+        chdr = tk.Frame(c, bg=PANEL2, height=36)
+        chdr.pack(fill="x")
+        chdr.pack_propagate(False)
+        lbl(chdr, "  ◉  ANALYTICS", 10, "bold",
+            fg=TEXT, bg=PANEL2).pack(side="left", pady=8)
 
-        btn_row = tk.Frame(card, bg=C["panel"])
-        btn_row.pack(fill="x", padx=10, pady=8)
+        btn_row = tk.Frame(chdr, bg=PANEL2)
+        btn_row.pack(side="right", padx=10, pady=4)
 
         charts = [
-            ("Availability", self._chart_availability, C["accent"]),
-            ("Demand",       self._chart_demand,        C["gold"]),
-            ("Heatmap",      self._chart_heatmap,       C["green"]),
-            ("Distribution", self._chart_dist,          C["muted"]),
+            ("Availability", self._chart_availability, ACCENT),
+            ("Demand",       self._chart_demand,        WARN),
+            ("Heatmap",      self._chart_heatmap,       SUCCESS),
+            ("Distribution", self._chart_dist,          MUTED),
         ]
+        self._chart_btns = {}
         for i, (label, cmd, col) in enumerate(charts):
             b = tk.Button(btn_row, text=label, command=cmd,
-                          font=FONTS["small"],
-                          bg=col, fg=C["text"],
+                          font=F(8),
+                          bg=ACCENT if i == 0 else PANEL,
+                          fg="#FFFFFF" if i == 0 else MUTED,
+                          activebackground=ACCENT,
+                          activeforeground="#FFFFFF",
                           relief="flat", bd=0,
-                          padx=6, pady=4,
-                          cursor="hand2",
-                          activebackground=C["accent2"],
-                          activeforeground=C["text"])
-            b.grid(row=0, column=i, padx=3)
-            b.bind("<Enter>", lambda e, c=col: e.widget.config(bg=C["accent2"]))
-            b.bind("<Leave>", lambda e, c=col: e.widget.config(bg=c))
+                          cursor="hand2", padx=10, pady=4)
+            b.pack(side="left", padx=(0, 4))
+            self._chart_btns[label] = b
 
-        self.fig = Figure(figsize=(5.8, 5.2), facecolor=C["panel"], tight_layout=True)
+        self.fig = Figure(figsize=(13, 2.8), facecolor=PANEL, tight_layout=True)
         self.ax  = self.fig.add_subplot(111)
         self._style_ax(self.ax)
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=card)
-        self.canvas.get_tk_widget().pack(fill="both", expand=True,
-                                          padx=10, pady=(0, 10))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=c)
+        self.canvas.get_tk_widget().configure(bg=PANEL, highlightthickness=0)
+        self.canvas.get_tk_widget().pack(fill="x", padx=10, pady=(4, 10))
         self._chart_availability()
 
-    # ----------------------------------------------------------
-    # STATS REFRESH
-    # ----------------------------------------------------------
+    # ── STATS REFRESH ────────────────────────────────────────
 
     def _refresh_stats(self):
-        total   = int(inventory_df["units_available"].sum())
-        types   = inventory_df["blood_type"].nunique()
-        banks   = inventory_df["bank_id"].nunique()
-        soon    = int((
-            (inventory_df["expiry_date"] - pd.Timestamp.now()).dt.days <= 7
-        ).sum())
-
-        self.stat_total.set(str(total))
-        self.stat_types.set(str(types))
-        self.stat_banks.set(str(banks))
+        now  = pd.Timestamp.now()
+        soon = int(((inventory_df["expiry_date"] - now).dt.days <= 7).sum())
+        self.stat_total.set(str(int(inventory_df["units_available"].sum())))
+        self.stat_types.set(str(inventory_df["blood_type"].nunique()))
+        self.stat_banks.set(str(inventory_df["bank_id"].nunique()))
         self.stat_expiry.set(str(soon))
 
-        self._update_stat_labels()
-
-    def _update_stat_labels(self):
-        """Walk stat bar and update big-number labels."""
-        try:
-            stat_row = self._stat_row_ref
-        except AttributeError:
-            return
-        values = [
-            self.stat_total.get(),
-            self.stat_types.get(),
-            self.stat_banks.get(),
-            self.stat_expiry.get(),
-        ]
-        for card, val in zip(stat_row.winfo_children(), values):
-            for w in card.winfo_children():
-                if w.cget("font") == str(FONTS["big"]):
-                    w.config(text=val)
-
-    # ----------------------------------------------------------
-    # TABLE LOAD
-    # ----------------------------------------------------------
+    # ── TABLE LOAD ───────────────────────────────────────────
 
     def _load_table(self, highlight_blood=None, highlight_hospital=None):
         for row in self.table.get_children():
@@ -551,21 +543,25 @@ class BloodDashboard(tk.Tk):
         df = inventory_df.copy()
         if filt != "All":
             df = df[df["blood_type"] == filt]
+        df = df.sort_values("expiry_date")
 
+        now = pd.Timestamp.now()
         for i, (_, row) in enumerate(df.iterrows()):
-            tag = "odd" if i % 2 else "even"
-            expiry_str = str(row["expiry_date"].date()) if hasattr(
-                row["expiry_date"], "date") else str(row["expiry_date"])
-            self.table.insert("", "end", tag=tag, values=(
+            days = (row["expiry_date"] - now).days
+            expiry_str = (row["expiry_date"].strftime("%Y-%m-%d")
+                          if hasattr(row["expiry_date"], "strftime")
+                          else str(row["expiry_date"]))
+            tags = ["odd" if i % 2 else "even"]
+            if days <= 3:   tags.append("crit")
+            elif days <= 7: tags.append("warn")
+            self.table.insert("", "end", tags=tags, values=(
                 row["bank_id"],
                 row["blood_type"],
-                row["units_available"],
+                int(row["units_available"]),
                 expiry_str,
             ))
 
-    # ----------------------------------------------------------
-    # SUBMIT  ← BUG FIX: deduct units from inventory_df in memory
-    # ----------------------------------------------------------
+    # ── SUBMIT ───────────────────────────────────────────────
 
     def _submit(self):
         blood    = self.cb_blood.get()
@@ -596,7 +592,7 @@ class BloodDashboard(tk.Tk):
         result = allocation_pipeline(inventory_df, [req], distance_df)[0]
         log_transaction(result)
 
-        # ── FIX: Deduct allocated units from the global inventory_df in memory ──
+        # Deduct allocated units from inventory_df in memory
         for detail in result.get("details", []):
             bank_id     = detail["bank_id"]
             units_taken = detail["units_taken"]
@@ -605,49 +601,101 @@ class BloodDashboard(tk.Tk):
                 (inventory_df["blood_type"] == blood)
             )
             inventory_df.loc[mask, "units_available"] -= units_taken
-            # Safety clamp — never go below zero
             inventory_df.loc[mask, "units_available"] = (
-                inventory_df.loc[mask, "units_available"].clip(lower=0)
-            )
+                inventory_df.loc[mask, "units_available"].clip(lower=0))
 
-        # Persist updated inventory to disk
+        # Persist to disk
         inventory_df.to_csv(_path("data", "blood_inventory.csv"), index=False)
 
-        # Reload table + stats to reflect deducted values
+        # Refresh table, stats, chart
         self._load_table(highlight_blood=blood, highlight_hospital=hospital)
         self._refresh_stats()
-        # Refresh the active chart so it also reflects new numbers
         self._chart_availability()
 
-        # Update result box
+        # Update result display
         status  = result["status"]
-        details = ", ".join(f"{d['bank_id']}→{d['units_taken']}"
-                            for d in result["details"]) or "—"
+        details = result.get("details", [])
+        detail_str = ", ".join(
+            f"{d['bank_id']}→{d['units_taken']}" for d in details) or "—"
+
         status_colors = {
-            "SUCCESS": C["green"],
-            "PARTIAL": C["gold"],
-            "FAILED":  C["accent"],
+            "SUCCESS": SUCCESS,
+            "PARTIAL": WARN,
+            "FAILED":  FAIL,
         }
-        color = status_colors.get(status, C["muted"])
+        color = status_colors.get(status, MUTED)
 
-        self.result_status_var.set(f"[ {status} ]")
+        # Badge
+        self.lbl_status_badge.config(
+            text=f"  {status}  ", fg=BG, bg=color)
+
+        # Big status label
+        status_labels = {
+            "SUCCESS": "Fully Allocated",
+            "PARTIAL": "Partially Allocated",
+            "FAILED":  "Allocation Failed",
+        }
+        self.result_status_var.set(status_labels.get(status, status))
         self.result_status_lbl.config(fg=color)
-        self.result_var.set(f"{result['message']}\n{details}")
-        self.result_label.config(fg=C["muted"])
-        self.result_card.config(highlightbackground=color)
 
-    # ----------------------------------------------------------
-    # CHART HELPERS
-    # ----------------------------------------------------------
+        self.result_var.set(f"{result['message']}\n{detail_str}")
+
+        # Fill breakdown table
+        self._fill_breakdown(details, hospital, blood)
+
+    def _fill_breakdown(self, details, hospital_id, blood_type):
+        for r in self.brk_table.get_children():
+            self.brk_table.delete(r)
+
+        now = pd.Timestamp.now()
+        for d in details:
+            bid = d["bank_id"]
+            ut  = d["units_taken"]
+
+            dr  = distance_df[(distance_df["bank_id"]     == bid) &
+                               (distance_df["hospital_id"] == hospital_id)]
+            dist = (f"{dr['distance_km'].values[0]:.1f}"
+                    if not dr.empty else "—")
+
+            ir = inventory_df[inventory_df["bank_id"] == bid]
+            if not ir.empty:
+                exp   = ir.iloc[0]["expiry_date"].strftime("%Y-%m-%d")
+                days  = (ir.iloc[0]["expiry_date"] - now).days
+                stock = int(ir.iloc[0]["units_available"])
+            else:
+                exp, days, stock = "—", "—", "—"
+
+            self.brk_table.insert("", "end", tags=("allocated",),
+                values=(bid, dist, exp, days, stock, ut))
+
+        # Update sort note with live values from first bank
+        if details:
+            now = pd.Timestamp.now()
+            first = details[0]["bank_id"]
+            dr = distance_df[(distance_df["bank_id"]     == first) &
+                              (distance_df["hospital_id"] == hospital_id)]
+            d_str = (f"{dr['distance_km'].values[0]:.1f} km"
+                     if not dr.empty else "—")
+            ir = inventory_df[inventory_df["bank_id"] == first]
+            days2 = ((ir.iloc[0]["expiry_date"] - now).days
+                     if not ir.empty else "—")
+            self.v_sort_note.set(
+                f"Sorted by: ① nearest distance  ② earliest expiry"
+                f"   ·   Primary bank {first}: {d_str},  {days2} days to expiry")
+
+    # ── CHART HELPERS ────────────────────────────────────────
 
     def _style_ax(self, ax):
-        ax.set_facecolor(C["panel"])
-        ax.tick_params(colors=C["muted"], labelsize=7)
-        ax.xaxis.label.set_color(C["muted"])
-        ax.yaxis.label.set_color(C["muted"])
-        ax.title.set_color(C["text"])
-        for spine in ax.spines.values():
-            spine.set_edgecolor(C["border"])
+        ax.set_facecolor(PANEL)
+        ax.set_axisbelow(True)
+        ax.grid(True, color=BORDER, linewidth=0.5)
+        ax.tick_params(colors=MUTED, labelsize=8)
+        ax.xaxis.label.set_color(MUTED)
+        ax.yaxis.label.set_color(MUTED)
+        ax.title.set_color(TEXT)
+        ax.title.set_fontsize(9)
+        for sp in ax.spines.values():
+            sp.set_edgecolor(BORDER)
 
     def _redraw(self):
         self.fig.clf()
@@ -655,54 +703,49 @@ class BloodDashboard(tk.Tk):
         self._style_ax(self.ax)
         return self.ax
 
+    def _switch_chart_btn(self, active_label):
+        for label, b in self._chart_btns.items():
+            b.config(
+                bg=ACCENT if label == active_label else PANEL,
+                fg="#FFFFFF" if label == active_label else MUTED)
+
     def _chart_availability(self):
+        self._switch_chart_btn("Availability")
         ax = self._redraw()
         grouped = inventory_df.groupby("blood_type")["units_available"].sum()
-        colors  = [C["accent"] if v == grouped.min()
-                   else C["green"] for v in grouped.values]
-        grouped.plot(kind="bar", ax=ax, color=colors, edgecolor="none",
-                     width=0.65)
+        colors  = [FAIL if v == grouped.min() else ACCENT
+                   for v in grouped.values]
+        grouped.plot(kind="bar", ax=ax, color=colors,
+                     edgecolor="none", width=0.65)
         ax.set_title("Blood Availability by Type", fontsize=9)
         ax.set_xlabel("")
         ax.set_ylabel("Units", fontsize=8)
         plt.setp(ax.get_xticklabels(), rotation=0, fontsize=8)
-        ax.yaxis.grid(True, color=C["border"], linewidth=0.5)
-        ax.set_axisbelow(True)
         self.canvas.draw()
 
     def _chart_demand(self):
+        self._switch_chart_btn("Demand")
         ax = self._redraw()
-        df = requests_df.copy()
-        grouped = df.groupby("request_date")["units_required"].sum()
+        grouped = requests_df.groupby("request_date")["units_required"].sum()
         ax.plot(grouped.index, grouped.values,
-                color=C["gold"], linewidth=1.8, marker="o",
-                markersize=3, markerfacecolor=C["accent"])
+                color=WARN, linewidth=1.8, marker="o",
+                markersize=3, markerfacecolor=FAIL)
         ax.fill_between(grouped.index, grouped.values,
-                        alpha=0.12, color=C["gold"])
+                        alpha=0.12, color=WARN)
         ax.set_title("Demand Over Time", fontsize=9)
         ax.set_ylabel("Units Required", fontsize=8)
         ax.tick_params(axis="x", labelrotation=30, labelsize=7)
-        ax.yaxis.grid(True, color=C["border"], linewidth=0.5)
-        ax.set_axisbelow(True)
         self.canvas.draw()
 
     def _chart_heatmap(self):
+        self._switch_chart_btn("Heatmap")
         ax = self._redraw()
         pivot = inventory_df.pivot_table(
-            values="units_available",
-            index="bank_id",
-            columns="blood_type",
-            aggfunc="sum",
-            fill_value=0,
-        )
-        cmap = sns.color_palette(
-            [C["panel"], C["border"], C["gold"], C["accent"]], as_cmap=True)
+            values="units_available", index="bank_id",
+            columns="blood_type", aggfunc="sum", fill_value=0)
         sns.heatmap(pivot, ax=ax, annot=True, fmt=".0f",
-                    cmap="RdYlGn_r",
-                    linewidths=0.5,
-                    linecolor=C["bg"],
-                    annot_kws={"size": 7},
-                    cbar_kws={"shrink": 0.7})
+                    cmap="Blues", linewidths=0.5, linecolor=BG,
+                    annot_kws={"size": 7}, cbar_kws={"shrink": 0.6})
         ax.set_title("Availability Heatmap", fontsize=9)
         ax.set_xlabel("Blood Type", fontsize=8)
         ax.set_ylabel("Bank", fontsize=8)
@@ -710,143 +753,21 @@ class BloodDashboard(tk.Tk):
         self.canvas.draw()
 
     def _chart_dist(self):
+        self._switch_chart_btn("Distribution")
         ax = self._redraw()
-        data = inventory_df["units_available"]
-        sns.histplot(data, ax=ax, color=C["accent"],
-                     kde=True, bins=15, edgecolor="none",
-                     line_kws={"color": C["gold"], "linewidth": 1.5})
+        sns.histplot(inventory_df["units_available"],
+                     ax=ax, color=ACCENT, kde=True, bins=15,
+                     edgecolor="none",
+                     line_kws={"color": WARN, "linewidth": 1.5})
         ax.set_title("Unit Distribution", fontsize=9)
         ax.set_xlabel("Units Available", fontsize=8)
         ax.set_ylabel("Frequency", fontsize=8)
-        ax.yaxis.grid(True, color=C["border"], linewidth=0.5)
-        ax.set_axisbelow(True)
         self.canvas.draw()
 
 
-# ============================================================
-# STAT CARD (patched to use StringVar for dynamic updates)
-# ============================================================
-
-def build_stat_section(parent):
-    """Build stat cards that can be updated dynamically."""
-    row = tk.Frame(parent, bg=C["bg"])
-
-    stat_vars   = {}
-    stat_labels = {}
-
-    specs = [
-        ("TOTAL UNITS",   "stat_total",  C["accent"]),
-        ("BLOOD TYPES",   "stat_types",  C["gold"]),
-        ("BANKS",         "stat_banks",  C["green"]),
-        ("EXPIRING SOON", "stat_expiry", C["muted"]),
-    ]
-
-    for title, key, color in specs:
-        card = make_card(row, highlightbackground=color)
-        card.pack(side="left", fill="both", expand=True, padx=6, pady=4)
-
-        make_label(card, title, style="small", fg=C["muted"]).pack(
-            anchor="w", padx=12, pady=(10, 0))
-
-        var = tk.StringVar(value="—")
-        lbl = tk.Label(card, textvariable=var,
-                       font=FONTS["big"],
-                       fg=color,
-                       bg=C["panel"])
-        lbl.pack(anchor="w", padx=12, pady=(0, 10))
-
-        stat_vars[key]   = var
-        stat_labels[key] = lbl
-
-    return row, stat_vars
-
-
-# ============================================================
-# IMPROVED APP (uses patched stat bar)
-# ============================================================
-
-class BloodDashboardV2(BloodDashboard):
-    """
-    Overrides center panel build to use dynamic stat cards.
-    """
-
-    def _build_center_panel(self, parent):
-        # Dynamic stat cards
-        stat_row, self.stat_vars = build_stat_section(parent)
-        stat_row.pack(fill="x", pady=(0, 8))
-        self._stat_row_ref = stat_row
-
-        # Keep compat attributes
-        self.stat_total  = self.stat_vars["stat_total"]
-        self.stat_types  = self.stat_vars["stat_types"]
-        self.stat_banks  = self.stat_vars["stat_banks"]
-        self.stat_expiry = self.stat_vars["stat_expiry"]
-
-        # Inventory table card
-        tbl_card = make_card(parent)
-        tbl_card.pack(fill="both", expand=True)
-
-        tbl_header = tk.Frame(tbl_card, bg=C["header_bg"], height=36)
-        tbl_header.pack(fill="x")
-        tbl_header.pack_propagate(False)
-        make_label(tbl_header, "  ▤  INVENTORY OVERVIEW", style="heading",
-                   fg=C["text"], bg=C["header_bg"]).pack(side="left", padx=8, pady=6)
-
-        filter_row = tk.Frame(tbl_card, bg=C["panel"])
-        filter_row.pack(fill="x", padx=12, pady=8)
-        make_label(filter_row, "FILTER TYPE:", style="small",
-                   fg=C["muted"]).pack(side="left")
-        self.cb_filter = styled_combobox(
-            filter_row,
-            ["All"] + ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-            width=10)
-        self.cb_filter.set("All")
-        self.cb_filter.pack(side="left", padx=8)
-        self.cb_filter.bind("<<ComboboxSelected>>", lambda e: self._load_table())
-
-        tbl_wrap = tk.Frame(tbl_card, bg=C["panel"])
-        tbl_wrap.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-
-        cols = ("bank_id", "blood_type", "units_available", "expiry_date")
-        self.table = ttk.Treeview(tbl_wrap, columns=cols, show="headings",
-                                   selectmode="browse")
-        headers = {
-            "bank_id":         ("Bank",    90,  "center"),
-            "blood_type":      ("Type",    70,  "center"),
-            "units_available": ("Units",   80,  "center"),
-            "expiry_date":     ("Expiry",  130, "center"),
-        }
-        for col, (heading, w, anchor) in headers.items():
-            self.table.heading(col, text=heading)
-            self.table.column(col, width=w, anchor=anchor, minwidth=50)
-
-        scroll = ttk.Scrollbar(tbl_wrap, orient="vertical",
-                               command=self.table.yview)
-        self.table.configure(yscrollcommand=scroll.set)
-        self.table.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
-
-        self.table.tag_configure("odd",  background=C["table_alt"])
-        self.table.tag_configure("even", background=C["panel"])
-
-    def _update_stat_labels(self):
-        """Update dynamic stat StringVars."""
-        self.stat_total.set(
-            str(int(inventory_df["units_available"].sum())))
-        self.stat_types.set(
-            str(inventory_df["blood_type"].nunique()))
-        self.stat_banks.set(
-            str(inventory_df["bank_id"].nunique()))
-        soon = int((
-            (inventory_df["expiry_date"] - pd.Timestamp.now()).dt.days <= 7
-        ).sum())
-        self.stat_expiry.set(str(soon))
-
-
-# ============================================================
-# ENTRY POINT
-# ============================================================
+# ─────────────────────────────────────────────────────────────
+# RUN
+# ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app = BloodDashboardV2()
-    app.mainloop()
+    BloodDashboard().mainloop()

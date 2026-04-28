@@ -1,11 +1,3 @@
-"""
-HEMATIX — Donation Portal
-Handles the Blood Donation modal window with 4 tabs:
-  - Schedule    : calendar date picker + bank selector + confirm
-  - Nearby      : list of nearby blood banks / camps
-  - History     : donor's past and upcoming donations
-  - Donor Photo : upload & process donor photo (PIL + OpenCV — Assignment 9)
-"""
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -15,83 +7,109 @@ import os
 import csv
 import pathlib
 
-from PIL import Image, ImageTk   # Image needed for LANCZOS constant in thumbnail
+from PIL import Image, ImageTk
 
-# Core image processing logic lives here — no UI code inside
-from src import image_processor as ip
+import image_processor as ip
 
-# ── shared palette & fonts (mirror main.py) ────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────
+# PALETTE  — matches main.py exactly
+# ─────────────────────────────────────────────────────────────
+
+BG      = "#1C2B3A"
+PANEL   = "#243447"
+PANEL2  = "#1A2535"
+BORDER  = "#2E4158"
+TEXT    = "#E8EDF2"
+MUTED   = "#7D93A8"
+ACCENT  = "#4A9EDB"
+DIM_ACC = "#3A7EBB"
+SUCCESS = "#4CAF82"
+WARN    = "#E8A83A"
+FAIL    = "#E05C5C"
+ALT     = "#1E2F3F"
+SEP     = "#2E4158"    # separator line colour
+SEL_ROW = "#2A3F52"
+
+FF = "Segoe UI"
+
+# Mirror the C dict so all existing C["key"] references keep working
 C = {
-    "bg":        "#0A0E1A",
-    "panel":     "#111827",
-    "border":    "#1E2D45",
-    "accent":    "#C0392B",
-    "accent2":   "#E74C3C",
-    "gold":      "#F39C12",
-    "green":     "#27AE60",
-    "text":      "#ECF0F1",
-    "muted":     "#7F8C9A",
-    "entry_bg":  "#0D1520",
-    "entry_fg":  "#ECF0F1",
-    "separator": "#1E3050",
-    "table_alt": "#0F1825",
-    "table_sel": "#1B2F4A",
-    "header_bg": "#0D1520",
+    "bg":        BG,
+    "panel":     PANEL,
+    "border":    BORDER,
+    "accent":    ACCENT,
+    "accent2":   DIM_ACC,
+    "gold":      WARN,
+    "green":     SUCCESS,
+    "text":      TEXT,
+    "muted":     MUTED,
+    "entry_bg":  PANEL2,
+    "entry_fg":  TEXT,
+    "separator": SEP,
+    "table_alt": ALT,
+    "table_sel": SEL_ROW,
+    "header_bg": PANEL2,
 }
 
+# Mirror FONTS dict — same keys, same structure, navy-appropriate sizes
 FONTS = {
-    "title":   ("Courier New", 16, "bold"),
-    "heading": ("Courier New", 11, "bold"),
-    "label":   ("Courier New", 9),
-    "input":   ("Courier New", 10),
-    "mono":    ("Courier New", 9),
-    "small":   ("Courier New", 8),
-    "tab":     ("Courier New", 9, "bold"),
-    "big":     ("Courier New", 22, "bold"),
+    "title":   (FF, 16, "bold"),
+    "heading": (FF, 11, "bold"),
+    "label":   (FF,  9),
+    "input":   (FF, 10),
+    "mono":    (FF,  9),
+    "small":   (FF,  8),
+    "tab":     (FF,  9, "bold"),
+    "big":     (FF, 22, "bold"),
 }
 
-# Nearby camps data (static — replace with DB/API later)
+
+# ─────────────────────────────────────────────────────────────
+# NEARBY CAMPS DATA
+# ─────────────────────────────────────────────────────────────
+
 NEARBY_CAMPS = [
     {
         "name":     "City Blood Bank — B1",
         "distance": "0.8 km",
         "hours":    "Open today  9 am – 5 pm",
         "status":   "Accepting walk-ins",
-        "color":    "#27AE60",
+        "color":    SUCCESS,
     },
     {
         "name":     "Red Cross Camp — B2",
         "distance": "2.1 km",
         "hours":    "Camp on May 3rd",
         "status":   "Pre-registration required",
-        "color":    "#F39C12",
+        "color":    WARN,
     },
     {
         "name":     "General Hospital — B4",
         "distance": "3.5 km",
         "hours":    "Mon – Sat  10 am – 4 pm",
         "status":   "Slots available",
-        "color":    "#27AE60",
+        "color":    SUCCESS,
     },
     {
         "name":     "Community Centre Drive — B3",
         "distance": "4.2 km",
         "hours":    "This weekend only",
         "status":   "Limited slots",
-        "color":    "#F39C12",
+        "color":    WARN,
     },
 ]
 
-# Donation log path (written next to the module)
-_HERE      = os.path.dirname(os.path.abspath(__file__))
-_LOG_PATH  = os.path.join(_HERE, "..", "output", "donation_log.csv")
-_LOG_COLS  = ["donor_name", "blood_type", "bank_id", "donation_date", "units", "status", "booked_on"]
 
-# (donor photo output directory is managed by image_processor.PHOTO_DIR)
+# ─────────────────────────────────────────────────────────────
+# PERSISTENCE
+# ─────────────────────────────────────────────────────────────
 
+_HERE     = os.path.dirname(os.path.abspath(__file__))
+_LOG_PATH = os.path.join(_HERE, "..", "output", "donation_log.csv")
+_LOG_COLS = ["donor_name", "blood_type", "bank_id",
+             "donation_date", "units", "status", "booked_on"]
 
-# ── persistence helpers ────────────────────────────────────────────────────
 
 def _ensure_log():
     os.makedirs(os.path.dirname(_LOG_PATH), exist_ok=True)
@@ -101,7 +119,6 @@ def _ensure_log():
 
 
 def load_donations():
-    """Return list[dict] of all donation records."""
     _ensure_log()
     with open(_LOG_PATH, newline="") as f:
         rows = list(csv.DictReader(f))
@@ -112,16 +129,16 @@ def load_donations():
 
 
 def save_donation(record: dict):
-    """Append a single donation record to the CSV."""
     _ensure_log()
     for col in _LOG_COLS:
         record.setdefault(col, "")
     with open(_LOG_PATH, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=_LOG_COLS)
-        w.writerow(record)
+        csv.DictWriter(f, fieldnames=_LOG_COLS).writerow(record)
 
 
-# ── small widget helpers ───────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# WIDGET HELPERS
+# ─────────────────────────────────────────────────────────────
 
 def _lbl(parent, text, font=None, fg=None, bg=None, **kw):
     return tk.Label(
@@ -143,14 +160,14 @@ def _btn(parent, text, cmd, bg=None, width=None, pady=6):
         parent, text=text, command=cmd,
         font=FONTS["heading"],
         bg=bg, fg=C["text"],
-        activebackground=C["accent2"],
+        activebackground=DIM_ACC,
         activeforeground=C["text"],
         relief="flat", bd=0,
         cursor="hand2",
         pady=pady,
         **({"width": width} if width else {}),
     )
-    b.bind("<Enter>", lambda e: b.config(bg=C["accent2"]))
+    b.bind("<Enter>", lambda e: b.config(bg=DIM_ACC))
     b.bind("<Leave>", lambda e: b.config(bg=bg))
     return b
 
@@ -161,7 +178,7 @@ def _entry(parent, width=22):
         font=FONTS["input"],
         bg=C["entry_bg"], fg=C["entry_fg"],
         insertbackground=C["accent"],
-        relief="flat", bd=4,
+        relief="flat", bd=0,
         highlightthickness=1,
         highlightbackground=C["border"],
         highlightcolor=C["accent"],
@@ -175,21 +192,43 @@ def _combo(parent, values, width=20):
     return cb
 
 
-# ══════════════════════════════════════════════════════════════════════════
+def _apply_ttk_styles(root):
+    s = ttk.Style(root)
+    s.theme_use("clam")
+    s.configure("Treeview",
+                background=PANEL, foreground=TEXT,
+                fieldbackground=PANEL, rowheight=25,
+                font=FONTS["label"], borderwidth=0)
+    s.configure("Treeview.Heading",
+                background=PANEL2, foreground=ACCENT,
+                font=FONTS["small"]+"bold" if False else FONTS["small"],
+                relief="flat", borderwidth=0)
+    s.map("Treeview",
+          background=[("selected", SEL_ROW)],
+          foreground=[("selected", TEXT)])
+    s.configure("TCombobox",
+                fieldbackground=PANEL2, background=PANEL2,
+                foreground=TEXT, arrowcolor=ACCENT,
+                bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
+    s.map("TCombobox",
+          fieldbackground=[("readonly", PANEL2)],
+          foreground=[("readonly", TEXT)],
+          selectbackground=[("readonly", ACCENT)],
+          selectforeground=[("readonly", "#FFFFFF")])
+    s.configure("Vertical.TScrollbar",
+                background=PANEL, troughcolor=BG,
+                arrowcolor=MUTED, bordercolor=BORDER)
+
+
+# ═════════════════════════════════════════════════════════════
 # CALENDAR WIDGET
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 class _MiniCalendar(tk.Frame):
-    """
-    A compact month-calendar.
-    Selected date is stored in self.selected_date (datetime.date | None).
-    Pass on_select callback to be notified of changes.
-    """
-
     DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 
     def __init__(self, parent, on_select=None, **kw):
-        super().__init__(parent, bg=C["entry_bg"], **kw)
+        super().__init__(parent, bg=PANEL2, **kw)
         self.on_select     = on_select
         self.selected_date = None
         self._today        = datetime.date.today()
@@ -203,13 +242,13 @@ class _MiniCalendar(tk.Frame):
         self._render_month()
 
     def _build_nav(self):
-        nav = tk.Frame(self, bg=C["entry_bg"])
+        nav = tk.Frame(self, bg=PANEL2)
         nav.pack(fill="x", pady=(6, 2))
 
         self._prev_btn = tk.Button(
             nav, text="◀", font=FONTS["small"],
-            bg=C["entry_bg"], fg=C["muted"],
-            activebackground=C["border"], activeforeground=C["text"],
+            bg=PANEL2, fg=MUTED,
+            activebackground=BORDER, activeforeground=TEXT,
             relief="flat", bd=0, cursor="hand2", padx=6,
             command=self._prev_month,
         )
@@ -217,31 +256,31 @@ class _MiniCalendar(tk.Frame):
 
         self._month_lbl = tk.Label(
             nav, text="", font=FONTS["heading"],
-            fg=C["accent"], bg=C["entry_bg"],
+            fg=ACCENT, bg=PANEL2,
         )
         self._month_lbl.pack(side="left", expand=True)
 
         self._next_btn = tk.Button(
             nav, text="▶", font=FONTS["small"],
-            bg=C["entry_bg"], fg=C["muted"],
-            activebackground=C["border"], activeforeground=C["text"],
+            bg=PANEL2, fg=MUTED,
+            activebackground=BORDER, activeforeground=TEXT,
             relief="flat", bd=0, cursor="hand2", padx=6,
             command=self._next_month,
         )
         self._next_btn.pack(side="right", padx=4)
 
     def _build_header(self):
-        hdr = tk.Frame(self, bg=C["entry_bg"])
+        hdr = tk.Frame(self, bg=PANEL2)
         hdr.pack(fill="x", padx=6)
         for d in self.DAY_LABELS:
             tk.Label(
                 hdr, text=d, font=FONTS["small"],
-                fg=C["muted"], bg=C["entry_bg"],
+                fg=MUTED, bg=PANEL2,
                 width=3, anchor="center",
             ).pack(side="left", expand=True)
 
     def _build_grid(self):
-        self._grid_frame = tk.Frame(self, bg=C["entry_bg"])
+        self._grid_frame = tk.Frame(self, bg=PANEL2)
         self._grid_frame.pack(fill="both", padx=6, pady=(2, 6))
 
     def _render_month(self):
@@ -256,37 +295,34 @@ class _MiniCalendar(tk.Frame):
         today = self._today
 
         for week in cal:
-            row = tk.Frame(self._grid_frame, bg=C["entry_bg"])
+            row = tk.Frame(self._grid_frame, bg=PANEL2)
             row.pack(fill="x")
             for day in week:
                 if day == 0:
-                    tk.Label(
-                        row, text="", width=3,
-                        bg=C["entry_bg"],
-                    ).pack(side="left", expand=True)
+                    tk.Label(row, text="", width=3, bg=PANEL2).pack(
+                        side="left", expand=True)
                     continue
 
                 d    = datetime.date(self._year, self._month, day)
                 past = d < today
 
                 if d == today:
-                    bg, fg = C["accent"], C["text"]
+                    bg, fg = ACCENT, "#FFFFFF"
                 elif self.selected_date and d == self.selected_date:
-                    bg, fg = C["border"], C["accent"]
+                    bg, fg = BORDER, ACCENT
                 elif past:
-                    bg, fg = C["entry_bg"], C["separator"]
+                    bg, fg = PANEL2, SEP
                 else:
-                    bg, fg = C["entry_bg"], C["text"]
+                    bg, fg = PANEL2, TEXT
 
                 b = tk.Button(
                     row, text=str(day),
                     font=FONTS["small"],
                     bg=bg, fg=fg,
-                    relief="flat", bd=0,
-                    width=3,
+                    relief="flat", bd=0, width=3,
                     cursor="hand2" if not past else "arrow",
-                    activebackground=C["border"],
-                    activeforeground=C["accent"],
+                    activebackground=BORDER,
+                    activeforeground=ACCENT,
                     command=(lambda _d=d: self._select(_d)) if not past else lambda: None,
                 )
                 b.pack(side="left", expand=True, pady=1)
@@ -313,40 +349,38 @@ class _MiniCalendar(tk.Frame):
         self._render_month()
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 # TAB 1 — SCHEDULE
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 class _ScheduleTab(tk.Frame):
-    """Tab 1 — pick a date, bank, enter donor info, confirm."""
-
     BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
     BANK_IDS    = ["B1", "B2", "B3", "B4"]
 
     def __init__(self, parent, on_booked=None, **kw):
-        super().__init__(parent, bg=C["panel"], **kw)
+        super().__init__(parent, bg=PANEL, **kw)
         self.on_booked = on_booked
         self._build()
 
     def _build(self):
         _lbl(self, "SELECT DONATION DATE",
-             font=FONTS["small"], fg=C["accent"]).pack(anchor="w", padx=14, pady=(12, 4))
+             font=FONTS["small"], fg=ACCENT).pack(anchor="w", padx=14, pady=(12, 4))
 
         self._cal = _MiniCalendar(self, on_select=self._on_date_select)
         self._cal.pack(fill="x", padx=14)
 
         self._date_lbl = _lbl(self, "No date selected",
-                               font=FONTS["small"], fg=C["muted"])
+                               font=FONTS["small"], fg=MUTED)
         self._date_lbl.pack(anchor="w", padx=14, pady=(2, 8))
 
         _sep(self).pack(fill="x", padx=14, pady=4)
 
-        form = tk.Frame(self, bg=C["panel"])
+        form = tk.Frame(self, bg=PANEL)
         form.pack(fill="x", padx=14, pady=4)
 
         def row(label, widget):
             _lbl(form, label, font=FONTS["small"],
-                 fg=C["muted"]).pack(anchor="w", pady=(6, 2))
+                 fg=MUTED).pack(anchor="w", pady=(6, 2))
             widget.pack(fill="x", ipady=3)
 
         self._donor_entry = _entry(form)
@@ -361,15 +395,15 @@ class _ScheduleTab(tk.Frame):
         _sep(self).pack(fill="x", padx=14, pady=10)
 
         _btn(self, "✔  CONFIRM BOOKING", self._confirm,
-             bg=C["accent"]).pack(fill="x", padx=14, pady=(0, 8))
+             bg=ACCENT).pack(fill="x", padx=14, pady=(0, 8))
 
         _lbl(self, "Note: minimum 56 days between donations",
-             font=FONTS["small"], fg=C["separator"]).pack(pady=(0, 10))
+             font=FONTS["small"], fg=SEP).pack(pady=(0, 10))
 
     def _on_date_select(self, date: datetime.date):
         self._date_lbl.config(
             text=f"Selected: {date.strftime('%d %b %Y')}",
-            fg=C["green"],
+            fg=SUCCESS,
         )
 
     def _confirm(self):
@@ -420,33 +454,31 @@ class _ScheduleTab(tk.Frame):
         self._bank_cb.set("")
         self._cal.selected_date = None
         self._cal._render_month()
-        self._date_lbl.config(text="No date selected", fg=C["muted"])
+        self._date_lbl.config(text="No date selected", fg=MUTED)
 
         if self.on_booked:
             self.on_booked(record)
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 # TAB 2 — NEARBY CAMPS
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 class _NearbyCampsTab(tk.Frame):
-    """Tab 2 — list of nearby donation camps / banks."""
-
     def __init__(self, parent, **kw):
-        super().__init__(parent, bg=C["panel"], **kw)
+        super().__init__(parent, bg=PANEL, **kw)
         self._build()
 
     def _build(self):
         _lbl(self, "CAMPS NEAR YOU",
-             font=FONTS["small"], fg=C["accent"]).pack(anchor="w", padx=14, pady=(12, 6))
+             font=FONTS["small"], fg=ACCENT).pack(anchor="w", padx=14, pady=(12, 6))
 
-        scroll_frame = tk.Frame(self, bg=C["panel"])
+        scroll_frame = tk.Frame(self, bg=PANEL)
         scroll_frame.pack(fill="both", expand=True, padx=14, pady=(0, 12))
 
-        canvas  = tk.Canvas(scroll_frame, bg=C["panel"], highlightthickness=0)
+        canvas  = tk.Canvas(scroll_frame, bg=PANEL, highlightthickness=0)
         scrollb = ttk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
-        inner   = tk.Frame(canvas, bg=C["panel"])
+        inner   = tk.Frame(canvas, bg=PANEL)
 
         inner.bind("<Configure>",
                    lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -461,58 +493,56 @@ class _NearbyCampsTab(tk.Frame):
 
     def _camp_card(self, parent, camp):
         card = tk.Frame(
-            parent, bg=C["entry_bg"],
+            parent, bg=PANEL2,
             highlightthickness=1,
-            highlightbackground=C["border"],
+            highlightbackground=BORDER,
         )
         card.pack(fill="x", pady=5)
 
-        top = tk.Frame(card, bg=C["entry_bg"])
+        top = tk.Frame(card, bg=PANEL2)
         top.pack(fill="x", padx=10, pady=(8, 2))
 
         _lbl(top, camp["name"],
-             font=FONTS["heading"], fg=C["accent"], bg=C["entry_bg"]).pack(side="left")
+             font=FONTS["heading"], fg=ACCENT, bg=PANEL2).pack(side="left")
         _lbl(top, camp["distance"],
-             font=FONTS["small"], fg=C["muted"], bg=C["entry_bg"]).pack(side="right")
+             font=FONTS["small"], fg=MUTED, bg=PANEL2).pack(side="right")
 
         _lbl(card, camp["hours"],
-             font=FONTS["small"], fg=C["muted"], bg=C["entry_bg"],
+             font=FONTS["small"], fg=MUTED, bg=PANEL2,
              anchor="w").pack(fill="x", padx=10, pady=1)
 
-        status_row = tk.Frame(card, bg=C["entry_bg"])
+        status_row = tk.Frame(card, bg=PANEL2)
         status_row.pack(fill="x", padx=10, pady=(2, 8))
         _lbl(status_row, f"● {camp['status']}",
-             font=FONTS["small"], fg=camp["color"], bg=C["entry_bg"]).pack(side="left")
+             font=FONTS["small"], fg=camp["color"], bg=PANEL2).pack(side="left")
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 # TAB 3 — HISTORY
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 class _HistoryTab(tk.Frame):
-    """Tab 3 — donor's past and upcoming donations."""
-
     def __init__(self, parent, **kw):
-        super().__init__(parent, bg=C["panel"], **kw)
+        super().__init__(parent, bg=PANEL, **kw)
         self._build()
 
     def _build(self):
-        header = tk.Frame(self, bg=C["panel"])
+        header = tk.Frame(self, bg=PANEL)
         header.pack(fill="x", padx=14, pady=(12, 6))
         _lbl(header, "DONATION HISTORY",
-             font=FONTS["small"], fg=C["accent"]).pack(side="left")
+             font=FONTS["small"], fg=ACCENT).pack(side="left")
         _btn(header, "⟳ Refresh", self._refresh,
-             bg=C["border"], pady=2).pack(side="right")
+             bg=BORDER, pady=2).pack(side="right")
 
-        self._summary_frame = tk.Frame(self, bg=C["panel"])
+        self._summary_frame = tk.Frame(self, bg=PANEL)
         self._summary_frame.pack(fill="x", padx=14, pady=(0, 8))
 
-        wrap = tk.Frame(self, bg=C["panel"])
+        wrap = tk.Frame(self, bg=PANEL)
         wrap.pack(fill="both", expand=True, padx=14, pady=(0, 12))
 
-        self._canvas = tk.Canvas(wrap, bg=C["panel"], highlightthickness=0)
+        self._canvas = tk.Canvas(wrap, bg=PANEL, highlightthickness=0)
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self._canvas.yview)
-        self._inner = tk.Frame(self._canvas, bg=C["panel"])
+        self._inner = tk.Frame(self._canvas, bg=PANEL)
         self._inner.bind("<Configure>",
                          lambda e: self._canvas.configure(
                              scrollregion=self._canvas.bbox("all")))
@@ -534,19 +564,22 @@ class _HistoryTab(tk.Frame):
         scheduled = [r for r in records if r["status"] == "SCHEDULED"]
         cancelled = [r for r in records if r["status"] == "CANCELLED"]
 
-        for label, count, fg, bg in [
-            ("SCHEDULED",  len(scheduled),  "#1A1000",  C["gold"]),
-            ("COMPLETED",  len(completed),  "#001A00",  C["green"]),
-            ("CANCELLED",  len(cancelled),  "#1A0000",  C["muted"]),
+        # Status pills using navy palette
+        for label, count, text_c, pill_bg in [
+            ("SCHEDULED", len(scheduled), "#FFFFFF", WARN),
+            ("COMPLETED", len(completed), "#FFFFFF", SUCCESS),
+            ("CANCELLED", len(cancelled), "#FFFFFF", MUTED),
         ]:
-            pill = tk.Frame(self._summary_frame, bg=bg)
+            pill = tk.Frame(self._summary_frame, bg=pill_bg,
+                            highlightthickness=0)
             pill.pack(side="left", padx=(0, 6))
             tk.Label(pill, text=f" {count}  {label} ",
-                     font=FONTS["small"], fg=fg, bg=bg).pack(padx=4, pady=3)
+                     font=FONTS["small"], fg=text_c,
+                     bg=pill_bg).pack(padx=4, pady=3)
 
         if not records:
             _lbl(self._inner, "No donation records yet.",
-                 font=FONTS["mono"], fg=C["muted"]).pack(pady=20)
+                 font=FONTS["mono"], fg=MUTED).pack(pady=20)
             return
 
         def sort_key(r):
@@ -565,20 +598,20 @@ class _HistoryTab(tk.Frame):
         is_sched = status == "SCHEDULED"
         is_done  = status == "COMPLETED"
 
-        badge_bg = C["gold"]   if is_sched else (C["green"] if is_done else C["muted"])
-        badge_fg = "#1A1000"   if is_sched else ("#001A00"  if is_done else "#0A0A0A")
+        badge_bg = WARN    if is_sched else (SUCCESS if is_done else MUTED)
+        badge_fg = "#FFFFFF"
 
         card = tk.Frame(
-            self._inner, bg=C["entry_bg"],
+            self._inner, bg=PANEL2,
             highlightthickness=1,
-            highlightbackground=C["border"],
+            highlightbackground=BORDER,
         )
         card.pack(fill="x", pady=4)
 
-        top = tk.Frame(card, bg=C["entry_bg"])
+        top = tk.Frame(card, bg=PANEL2)
         top.pack(fill="x", padx=10, pady=(8, 2))
 
-        info = tk.Frame(top, bg=C["entry_bg"])
+        info = tk.Frame(top, bg=PANEL2)
         info.pack(side="left", fill="x", expand=True)
 
         try:
@@ -588,10 +621,10 @@ class _HistoryTab(tk.Frame):
             d_str = rec.get("donation_date", "—")
 
         _lbl(info, f"{d_str}  ·  {rec.get('bank_id', '?')}",
-             font=FONTS["input"], fg=C["text"], bg=C["entry_bg"]).pack(anchor="w")
+             font=FONTS["input"], fg=TEXT, bg=PANEL2).pack(anchor="w")
         _lbl(info, f"Donor: {rec.get('donor_name', '?')}  ·  "
                    f"{rec.get('blood_type', '?')}  ·  450 ml",
-             font=FONTS["small"], fg=C["muted"], bg=C["entry_bg"]).pack(anchor="w")
+             font=FONTS["small"], fg=MUTED, bg=PANEL2).pack(anchor="w")
 
         tk.Label(
             top, text=f"  {status}  ",
@@ -600,13 +633,13 @@ class _HistoryTab(tk.Frame):
             padx=4, pady=3, relief="flat",
         ).pack(side="right", anchor="n", padx=(8, 0))
 
-        bottom = tk.Frame(card, bg=C["entry_bg"])
+        bottom = tk.Frame(card, bg=PANEL2)
         bottom.pack(fill="x", padx=10, pady=(2, 8))
 
         booked_on = rec.get("booked_on", "")
         if booked_on:
             _lbl(bottom, f"Booked on: {booked_on}",
-                 font=FONTS["small"], fg=C["separator"], bg=C["entry_bg"]).pack(side="left")
+                 font=FONTS["small"], fg=SEP, bg=PANEL2).pack(side="left")
 
         if is_sched:
             def _cancel(r=rec):
@@ -620,8 +653,8 @@ class _HistoryTab(tk.Frame):
             tk.Button(
                 bottom, text="✕ Cancel",
                 font=FONTS["small"],
-                bg=C["entry_bg"], fg=C["accent"],
-                activebackground=C["accent"], activeforeground=C["text"],
+                bg=PANEL2, fg=FAIL,
+                activebackground=FAIL, activeforeground="#FFFFFF",
                 relief="flat", bd=0, cursor="hand2",
                 command=_cancel,
             ).pack(side="right")
@@ -649,14 +682,12 @@ class _HistoryTab(tk.Frame):
         self._refresh()
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# TAB 4 — DONOR PHOTO  (Assignment 9 — PIL + OpenCV)
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
+# TAB 4 — DONOR PHOTO  (PIL + OpenCV)
+# ═════════════════════════════════════════════════════════════
 
 class _PhotoTab(tk.Frame):
     """
-    Tab 4 — Donor Photo  (covers all 8 PIL / OpenCV assignment operations)
-    ────────────────────────────────────────────────────────────────────────
     Op 1  Read        – filedialog → PIL.Image.open()
     Op 2  Display     – show original in canvas via ImageTk
     Op 3  Save        – PIL .save() with timestamped filename
@@ -670,82 +701,78 @@ class _PhotoTab(tk.Frame):
     PREV_W, PREV_H = 220, 165
 
     def __init__(self, parent, **kw):
-        super().__init__(parent, bg=C["panel"], **kw)
-        self._orig_pil = None   # original loaded image (PIL.Image)
-        self._curr_pil = None   # currently displayed image (PIL.Image)
+        super().__init__(parent, bg=PANEL, **kw)
+        self._orig_pil  = None
+        self._curr_pil  = None
         self._photo_ref = None
-        self._orig_path: str = ""
+        self._orig_path = ""
         self._build()
 
-    # ── layout ────────────────────────────────────────────────────────────
-
     def _build(self):
-        # Header
-        hdr = tk.Frame(self, bg=C["panel"])
+        hdr = tk.Frame(self, bg=PANEL)
         hdr.pack(fill="x", padx=14, pady=(12, 0))
         tk.Label(hdr, text="DONOR PHOTO  /  IMAGE PROCESSING",
-                 font=FONTS["small"], fg=C["accent"], bg=C["panel"]).pack(side="left")
+                 font=FONTS["small"], fg=ACCENT, bg=PANEL).pack(side="left")
 
-        # Upload row
-        upload_row = tk.Frame(self, bg=C["panel"])
+        upload_row = tk.Frame(self, bg=PANEL)
         upload_row.pack(fill="x", padx=14, pady=(8, 4))
 
         self._upload_btn = tk.Button(
             upload_row, text="📂  UPLOAD PHOTO",
             font=FONTS["heading"],
-            bg=C["accent"], fg=C["text"],
-            activebackground=C["accent2"], activeforeground=C["text"],
+            bg=ACCENT, fg="#FFFFFF",
+            activebackground=DIM_ACC, activeforeground="#FFFFFF",
             relief="flat", bd=0, cursor="hand2", pady=5,
             command=self._load_image,
         )
         self._upload_btn.pack(side="left")
-        self._upload_btn.bind("<Enter>", lambda e: self._upload_btn.config(bg=C["accent2"]))
-        self._upload_btn.bind("<Leave>", lambda e: self._upload_btn.config(bg=C["accent"]))
+        self._upload_btn.bind("<Enter>",
+            lambda e: self._upload_btn.config(bg=DIM_ACC))
+        self._upload_btn.bind("<Leave>",
+            lambda e: self._upload_btn.config(bg=ACCENT))
 
         self._file_lbl = tk.Label(
             upload_row, text="  No file loaded",
-            font=FONTS["small"], fg=C["muted"], bg=C["panel"], anchor="w",
+            font=FONTS["small"], fg=MUTED, bg=PANEL, anchor="w",
         )
         self._file_lbl.pack(side="left", padx=8)
 
         # Preview canvas
         preview_outer = tk.Frame(
-            self, bg=C["entry_bg"],
-            highlightthickness=1,
-            highlightbackground=C["border"],
+            self, bg=PANEL2,
+            highlightthickness=1, highlightbackground=BORDER,
         )
         preview_outer.pack(padx=14, pady=(4, 4))
 
         self._canvas = tk.Canvas(
             preview_outer,
             width=self.PREV_W, height=self.PREV_H,
-            bg=C["entry_bg"], highlightthickness=0,
+            bg=PANEL2, highlightthickness=0,
         )
         self._canvas.pack()
         self._draw_placeholder()
 
         self._op_lbl = tk.Label(
             self, text="No operation applied",
-            font=FONTS["small"], fg=C["muted"], bg=C["panel"],
+            font=FONTS["small"], fg=MUTED, bg=PANEL,
         )
         self._op_lbl.pack(pady=(2, 4))
 
-        # Separator
-        tk.Frame(self, bg=C["separator"], height=1).pack(fill="x", padx=14, pady=(4, 6))
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x", padx=14, pady=(4, 6))
 
-        # Operation buttons — 2-column grid
-        grid = tk.Frame(self, bg=C["panel"])
+        # Operation buttons — 2-col grid
+        grid = tk.Frame(self, bg=PANEL)
         grid.pack(fill="x", padx=14)
 
         ops = [
-            ("① SHOW ORIGINAL",      self._op_display,   C["border"]),
-            ("② SAVE IMAGE",          self._op_save,      C["green"]),
-            ("③ RESIZE  (½×)",        self._op_resize,    C["border"]),
-            ("④ FLIP  (horizontal)",  self._op_flip,      C["border"]),
-            ("⑤ CROP  (centre sq.)",  self._op_crop,      C["border"]),
-            ("⑥ GRAYSCALE",           self._op_grayscale, C["border"]),
-            ("⑦ ENHANCE CONTRAST",    self._op_contrast,  C["accent"]),
-            ("⑧ RESET",               self._op_reset,     "#2C3E50"),
+            ("① SHOW ORIGINAL",     self._op_display,   BORDER),
+            ("② SAVE IMAGE",         self._op_save,      SUCCESS),
+            ("③ RESIZE  (½×)",       self._op_resize,    BORDER),
+            ("④ FLIP  (horizontal)", self._op_flip,      BORDER),
+            ("⑤ CROP  (centre sq.)", self._op_crop,      BORDER),
+            ("⑥ GRAYSCALE",          self._op_grayscale, BORDER),
+            ("⑦ ENHANCE CONTRAST",   self._op_contrast,  ACCENT),
+            ("⑧ RESET",              self._op_reset,     PANEL2),
         ]
 
         for idx, (label, cmd, bg_col) in enumerate(ops):
@@ -754,39 +781,34 @@ class _PhotoTab(tk.Frame):
             b = tk.Button(
                 grid, text=label,
                 font=FONTS["small"],
-                bg=bg_col, fg=C["text"],
-                activebackground=C["accent2"], activeforeground=C["text"],
+                bg=bg_col, fg=TEXT,
+                activebackground=DIM_ACC, activeforeground="#FFFFFF",
                 relief="flat", bd=0, cursor="hand2",
                 pady=7, padx=4,
                 command=cmd,
             )
             b.grid(row=row, column=col, sticky="ew", padx=3, pady=3)
-            b.bind("<Enter>", lambda e, btn=b: btn.config(bg=C["accent2"]))
-            b.bind("<Leave>", lambda e, btn=b, obg=bg_col: btn.config(bg=obg))
+            b.bind("<Enter>", lambda e, btn=b: btn.config(bg=DIM_ACC, fg="#FFFFFF"))
+            b.bind("<Leave>", lambda e, btn=b, obg=bg_col: btn.config(bg=obg, fg=TEXT))
 
         grid.columnconfigure(0, weight=1)
         grid.columnconfigure(1, weight=1)
 
-        # Status bar
-        tk.Frame(self, bg=C["separator"], height=1).pack(fill="x", padx=14, pady=(6, 0))
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x", padx=14, pady=(6, 0))
         self._status = tk.Label(
             self, text="Upload a photo to enable operations.",
-            font=FONTS["small"], fg=C["separator"], bg=C["panel"],
+            font=FONTS["small"], fg=MUTED, bg=PANEL,
             anchor="w", wraplength=460,
         )
         self._status.pack(fill="x", padx=14, pady=(4, 10))
-
-    # ── placeholder ───────────────────────────────────────────────────────
 
     def _draw_placeholder(self):
         self._canvas.delete("all")
         cx, cy = self.PREV_W // 2, self.PREV_H // 2
         self._canvas.create_text(cx, cy - 14, text="👤",
-                                  font=("Segoe UI Emoji", 28), fill=C["border"])
+                                  font=("Segoe UI Emoji", 28), fill=BORDER)
         self._canvas.create_text(cx, cy + 22, text="No photo loaded",
-                                  font=FONTS["small"], fill=C["muted"])
-
-    # ── show PIL image in canvas ──────────────────────────────────────────
+                                  font=FONTS["small"], fill=MUTED)
 
     def _show(self, pil_img, op_name: str = ""):
         self._curr_pil = pil_img
@@ -799,157 +821,111 @@ class _PhotoTab(tk.Frame):
             anchor="center", image=self._photo_ref,
         )
         if op_name:
-            self._op_lbl.config(text=f"Showing: {op_name}", fg=C["gold"])
-
-    # ── guard ─────────────────────────────────────────────────────────────
+            self._op_lbl.config(text=f"Showing: {op_name}", fg=WARN)
 
     def _need_image(self) -> bool:
         if self._orig_pil is None:
-            messagebox.showwarning("No Image", "Please upload a photo first.", parent=self)
+            messagebox.showwarning("No Image", "Please upload a photo first.",
+                                   parent=self)
             return False
         return True
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 1 — Read
-    # ══════════════════════════════════════════════════════════════════════
+    # Ops 1-8 — identical logic, only colours changed above
+
     def _load_image(self):
         path = filedialog.askopenfilename(
             title="Select donor photo",
             filetypes=[
                 ("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff *.gif"),
-                ("All files", "*.*"),
+                ("All files",   "*.*"),
             ],
             parent=self,
         )
         if not path:
             return
-
         self._orig_path = path
-        # Op 1: delegate to image_processor.read_image()
-        self._orig_pil = ip.read_image(path)
-        self._curr_pil = self._orig_pil.copy()
-
+        self._orig_pil  = ip.read_image(path)
+        self._curr_pil  = self._orig_pil.copy()
         fname = pathlib.Path(path).name
         self._file_lbl.config(
             text=f"  {fname}  ({self._orig_pil.width}×{self._orig_pil.height})",
-            fg=C["green"],
+            fg=SUCCESS,
         )
-        # Op 2: Display — UI responsibility (show in canvas)
         self._show(self._orig_pil, "Original  (Op 1+2: Read & Display)")
         self._status.config(
             text=f"Loaded: {fname}  —  use the buttons below to process.",
-            fg=C["muted"],
+            fg=MUTED,
         )
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 2 — Display
-    # ══════════════════════════════════════════════════════════════════════
     def _op_display(self):
         if not self._need_image(): return
         self._show(self._orig_pil, "Original  (Op 2: Display)")
-        self._status.config(text="Op 2 – Displaying original image.", fg=C["muted"])
+        self._status.config(text="Op 2 – Displaying original image.", fg=MUTED)
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 3 — Save with new name
-    # ══════════════════════════════════════════════════════════════════════
     def _op_save(self):
         if not self._need_image(): return
-        # Op 3: delegate to image_processor.save_image()
         dest = ip.save_image(self._curr_pil, self._orig_path)
         self._status.config(
             text=f"Op 3 – Saved as  {dest.name}  ->  output/donor_photos/",
-            fg=C["green"],
+            fg=SUCCESS,
         )
         messagebox.showinfo("Image Saved", f"Saved to:\n{dest}", parent=self)
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 4 — Resize (half)
-    # ══════════════════════════════════════════════════════════════════════
     def _op_resize(self):
         if not self._need_image(): return
-        w, h = self._orig_pil.size
-        # Op 4: delegate to image_processor.resize_image()
+        w, h    = self._orig_pil.size
         resized = ip.resize_image(self._orig_pil, scale=0.5)
         self._show(resized, f"Resized  half  ->  {w//2}x{h//2}  (Op 4)")
         self._curr_pil = resized
         self._status.config(
-            text=f"Op 4 – Resized: {w}x{h}  ->  {w//2}x{h//2}  via image_processor.resize_image().",
-            fg=C["muted"],
+            text=f"Op 4 – Resized: {w}x{h}  ->  {w//2}x{h//2}.",
+            fg=MUTED,
         )
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 5 — Flip horizontal (OpenCV)
-    # ══════════════════════════════════════════════════════════════════════
     def _op_flip(self):
         if not self._need_image(): return
-        # Op 5: delegate to image_processor.flip_image()
         result = ip.flip_image(self._orig_pil, direction="horizontal")
         self._show(result, "Flipped horizontally  (Op 5)")
         self._curr_pil = result
-        self._status.config(
-            text="Op 5 – Horizontal flip via image_processor.flip_image().", fg=C["muted"])
+        self._status.config(text="Op 5 – Horizontal flip.", fg=MUTED)
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 6 — Crop (centre square)
-    # ══════════════════════════════════════════════════════════════════════
     def _op_crop(self):
         if not self._need_image(): return
-        w, h = self._orig_pil.size
-        side = min(w, h)
-        # Op 6: delegate to image_processor.crop_image()
-        cropped = ip.crop_image(self._orig_pil)   # None = centre square
+        w, h    = self._orig_pil.size
+        side    = min(w, h)
+        cropped = ip.crop_image(self._orig_pil)
         self._show(cropped, f"Centre crop  {side}x{side}  (Op 6)")
         self._curr_pil = cropped
         self._status.config(
-            text=f"Op 6 – Centre square crop {side}x{side}  via image_processor.crop_image().",
-            fg=C["muted"],
-        )
+            text=f"Op 6 – Centre square crop {side}x{side}.", fg=MUTED)
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 7 — Grayscale (OpenCV)
-    # ══════════════════════════════════════════════════════════════════════
     def _op_grayscale(self):
         if not self._need_image(): return
-        # Op 7: delegate to image_processor.grayscale_image()
         result = ip.grayscale_image(self._orig_pil)
         self._show(result, "Grayscale  (Op 7)")
         self._curr_pil = result
-        self._status.config(
-            text="Op 7 – Grayscale via image_processor.grayscale_image().", fg=C["muted"])
+        self._status.config(text="Op 7 – Grayscale.", fg=MUTED)
 
-    # ══════════════════════════════════════════════════════════════════════
-    # Op 8 — Enhance contrast (PIL ImageEnhance)
-    # ══════════════════════════════════════════════════════════════════════
     def _op_contrast(self):
         if not self._need_image(): return
-        factor = 2.0
-        # Op 8: delegate to image_processor.enhance_contrast()
+        factor   = 2.0
         enhanced = ip.enhance_contrast(self._orig_pil, factor=factor)
         self._show(enhanced, f"Contrast x{factor}  (Op 8)")
         self._curr_pil = enhanced
-        self._status.config(
-            text=f"Op 8 – Contrast x{factor} via image_processor.enhance_contrast().",
-            fg=C["muted"],
-        )
+        self._status.config(text=f"Op 8 – Contrast x{factor}.", fg=MUTED)
 
-    # ── reset ─────────────────────────────────────────────────────────────
     def _op_reset(self):
         if not self._need_image(): return
         self._show(self._orig_pil, "Original (reset)")
         self._curr_pil = self._orig_pil.copy()
-        self._status.config(text="Reset to original image.", fg=C["muted"])
+        self._status.config(text="Reset to original image.", fg=MUTED)
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 # DONATION PORTAL WINDOW
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 class DonationPortal(tk.Toplevel):
-    """
-    Full donation window.  Call open_donation_portal(parent) instead of
-    instantiating directly.
-    """
-
     TABS = ["SCHEDULE", "NEARBY CAMPS", "MY HISTORY", "DONOR PHOTO"]
 
     def __init__(self, parent):
@@ -957,19 +933,17 @@ class DonationPortal(tk.Toplevel):
         self.title("HEMATIX — Blood Donation Portal")
         self.geometry("520x700")
         self.minsize(480, 620)
-        self.configure(bg=C["bg"])
+        self.configure(bg=BG)
         self.resizable(True, True)
-
         self.transient(parent)
         self.grab_set()
+
+        _apply_ttk_styles(self)
 
         self._active_tab = 0
         self._tab_btns   = []
         self._tab_frames = []
-
         self._build()
-
-    # ── layout ────────────────────────────────────────────────────────────
 
     def _build(self):
         self._build_header()
@@ -978,44 +952,43 @@ class DonationPortal(tk.Toplevel):
         self._switch_tab(0)
 
     def _build_header(self):
-        bar = tk.Frame(self, bg=C["panel"], height=50)
+        bar = tk.Frame(self, bg=PANEL, height=50)
         bar.pack(fill="x")
         bar.pack_propagate(False)
 
-        tk.Frame(bar, bg=C["accent"], height=3).pack(fill="x", side="top")
+        # Left accent stripe matching main.py topbar
+        tk.Frame(bar, bg=ACCENT, width=4).pack(side="left", fill="y")
 
-        inner = tk.Frame(bar, bg=C["panel"])
+        inner = tk.Frame(bar, bg=PANEL)
         inner.pack(fill="both", expand=True, padx=16)
 
         _lbl(inner, "♥  BLOOD DONATION PORTAL",
-             font=FONTS["title"], fg=C["accent"], bg=C["panel"]).pack(side="left", pady=8)
+             font=FONTS["title"], fg=ACCENT, bg=PANEL).pack(side="left", pady=10)
 
         tk.Button(
             inner, text="✕",
             font=FONTS["heading"],
-            bg=C["panel"], fg=C["muted"],
-            activebackground=C["accent"],
-            activeforeground=C["text"],
+            bg=PANEL, fg=MUTED,
+            activebackground=FAIL, activeforeground="#FFFFFF",
             relief="flat", bd=0, cursor="hand2",
             command=self.destroy,
-        ).pack(side="right", pady=8)
+        ).pack(side="right", pady=10)
 
     def _build_tab_bar(self):
-        bar = tk.Frame(self, bg=C["header_bg"])
+        bar = tk.Frame(self, bg=PANEL2)
         bar.pack(fill="x")
 
-        _sep(bar).pack(fill="x")
+        tk.Frame(bar, bg=BORDER, height=1).pack(fill="x")
 
-        btn_row = tk.Frame(bar, bg=C["header_bg"])
+        btn_row = tk.Frame(bar, bg=PANEL2)
         btn_row.pack(fill="x", padx=10, pady=6)
 
         for i, label in enumerate(self.TABS):
             b = tk.Button(
                 btn_row, text=label,
                 font=FONTS["tab"],
-                bg=C["header_bg"], fg=C["muted"],
-                activebackground=C["border"],
-                activeforeground=C["accent"],
+                bg=PANEL2, fg=MUTED,
+                activebackground=BORDER, activeforeground=ACCENT,
                 relief="flat", bd=0,
                 padx=10, pady=6,
                 cursor="hand2",
@@ -1024,17 +997,17 @@ class DonationPortal(tk.Toplevel):
             b.pack(side="left", padx=2)
             self._tab_btns.append(b)
 
-        _sep(bar).pack(fill="x")
+        tk.Frame(bar, bg=BORDER, height=1).pack(fill="x")
 
     def _build_content(self):
-        self._content_area = tk.Frame(self, bg=C["panel"])
+        self._content_area = tk.Frame(self, bg=PANEL)
         self._content_area.pack(fill="both", expand=True)
 
         self._tab_frames = [
             _ScheduleTab(self._content_area, on_booked=self._on_new_booking),
             _NearbyCampsTab(self._content_area),
             _HistoryTab(self._content_area),
-            _PhotoTab(self._content_area),          # Tab 4 — Assignment 9
+            _PhotoTab(self._content_area),
         ]
 
     def _switch_tab(self, idx: int):
@@ -1043,10 +1016,10 @@ class DonationPortal(tk.Toplevel):
             frame.pack_forget()
         self._tab_frames[idx].pack(fill="both", expand=True)
         for i, b in enumerate(self._tab_btns):
-            if i == idx:
-                b.config(bg=C["accent"], fg=C["text"])
-            else:
-                b.config(bg=C["header_bg"], fg=C["muted"])
+            b.config(
+                bg=ACCENT if i == idx else PANEL2,
+                fg="#FFFFFF" if i == idx else MUTED,
+            )
 
     def _on_new_booking(self, record):
         history_tab = self._tab_frames[2]
@@ -1054,25 +1027,14 @@ class DonationPortal(tk.Toplevel):
             history_tab._refresh()
 
 
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 # PUBLIC ENTRY POINT
-# ══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 def open_donation_portal(parent):
     """
     Open the Donation Portal as a modal window.
-    Call this from main.py when the Donate button is clicked.
-
-    Usage in main.py:
-        from src.donation_portal import open_donation_portal
-        ...
-        styled_button(body, "♥  DONATE BLOOD",
-                      lambda: open_donation_portal(self),
-                      color=C["border"]).pack(fill="x", pady=(6, 0))
-
-    Dependencies (pip install):
-        pillow
-        opencv-python
+    Call from main.py when the Donate button is clicked.
     """
     portal = DonationPortal(parent)
     portal.wait_window()
