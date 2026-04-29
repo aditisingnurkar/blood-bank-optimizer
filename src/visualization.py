@@ -5,6 +5,8 @@ import pandas as pd
 
 # Matplotlib — Basic Graphs
 
+
+# Bar Graph
 def plot_blood_availability(inventory_df):
     grouped = inventory_df.groupby("blood_type")["units_available"].sum()
 
@@ -17,7 +19,7 @@ def plot_blood_availability(inventory_df):
     plt.tight_layout()
     plt.show()
 
-
+# Line Graph
 def plot_demand_over_time(requests_df):
     df = requests_df.copy()
     df["request_date"] = pd.to_datetime(df["request_date"])
@@ -35,6 +37,7 @@ def plot_demand_over_time(requests_df):
 
 # Seaborn — Advanced Graphs
 
+# Heatmap
 def plot_shortage_heatmap(inventory_df):
     pivot = inventory_df.pivot_table(
         values="units_available",
@@ -49,7 +52,7 @@ def plot_shortage_heatmap(inventory_df):
     plt.tight_layout()
     plt.show()
 
-
+# Histogram with kde
 def plot_distribution(inventory_df):
     plt.figure()
     sns.histplot(inventory_df["units_available"], kde=True)
